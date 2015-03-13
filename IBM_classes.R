@@ -15,61 +15,64 @@ ages = rep(0,5)
 socialStats = rep("Pup",5)
 reproStats = rep(FALSE, 5)
 birthMons = rep(0,5)
+mortMons = rep(-999,5)
+liveStats = rep(TRUE,5)
 
-IDs = newInds(newIDs, sexes, genotypes, ages, socialStats, reproStats, birthMons)
+IDs = newInds(newIDs, sexes, genotypes, ages, socialStats, reproStats, birthMons, mortMons, liveStats)
   
 
 ### Define Classes
 
 # Individual
 setClass("individuals",
-         representation(genotype = "character",
-                        sex = "character",
+         representation(Genotype = "character",
+                        Sex = "character",
                         ID = "numeric",
-                        age = "numeric",
-                        socialStat = "character",
-                        reproStat = "logical",
-                        birthMon = "numeric",
-                        mortMon = "numeric",
-                        liveStat = "logical"))
+                        Age = "numeric",
+                        SocialStat = "character",
+                        ReproStat = "logical",
+                        BirthMon = "numeric",
+                        MortMon = "numeric",
+                        LiveStat = "logical"))
 
 # Class Functions
-newInds <- function(newIDs, sexes, genotypes, ages, socialStats, reproStats, birthMons) {
+newInds <- function(newIDs, sexes, genotypes, ages, socialStats, reproStats, birthMons, mortMons, liveStats) {
   
   nrecs <- length(newIDs)
   if (nrecs != length(sexes) || nrecs != length(genotypes) || nrecs != length(ages) || nrecs != length(socialStats) 
-      || nrecs != length(reproStats) || nrecs != length(birthMons))
+      || nrecs != length(reproStats) || nrecs != length(birthMons) || nrecs != length(mortMons) || nrecs != length(liveStats))
     stop("New individual state variables not of equal length")
   
   if (!is.character(genotypes) || !is.character(sexes) || !is.numeric(newIDs) || !is.numeric(ages) 
-      || !is.character(socialStats) || !is.logical(reproStats) || !is.numeric(birthMons))
+      || !is.character(socialStats) || !is.logical(reproStats) || !is.numeric(birthMons) || !is.numeric(mortMons) || !is.logical(liveStats))
     stop("New individual state variable classes are not properly defined")
   
-  mortMon = as.numeric(rep(NA, nrecs))
-  liveStat = as.logical(rep("TRUE", nrecs))
+  #mortMon = as.numeric(rep(NA, nrecs))
+  #liveStat = as.logical(rep("TRUE", nrecs))
   
   new("individuals", ID = as.vector(newIDs),
-             sex = as.vector(sexes),
-             genotype = as.vector(genotypes),
-             age = as.vector(ages),
-             socialStat = as.vector(socialStats),
-             reproStat = as.vector(reproStats),
-             birthMon = as.vector(birthMons),
-             mortMon = as.vector(mortMon),
-             liveStat = as.vector(liveStat)
+             Sex = as.vector(sexes),
+             Genotype = as.vector(genotypes),
+             Age = as.vector(ages),
+             SocialStat = as.vector(socialStats),
+             ReproStat = as.vector(reproStats),
+             BirthMon = as.vector(birthMons),
+             MortMon = as.vector(mortMons),
+             LiveStat = as.vector(liveStats)
       )
 }
 
 
 # Accessor functions
 printIDs <- function(individuals) individuals@ID
-printGeno <- function(individuals) individuals@genotype
-printSex <- function(individuals) individuals@sex
-printAge <- function(individuals) individuals@age
-printSocial <- function(individuals) individuals@socialStat
-printRepro <- function(individuals) individuals@reproStat
-printBirthMon <- function(individuals) individuals@birthMon
-printLive <- function(individuals) individuals@liveStat
+printGeno <- function(individuals) individuals@Genotype
+printSex <- function(individuals) individuals@Sex
+printAge <- function(individuals) individuals@Age
+printSocial <- function(individuals) individuals@SocialStat
+printRepro <- function(individuals) individuals@ReproStat
+printBirthMon <- function(individuals) individuals@BirthMon
+printMortMon <- function(individuals) individuals@MortMon
+printLive <- function(individuals) individuals@LiveStat
 
 # Method functions
 setMethod(show, signature("individuals"),
@@ -81,9 +84,44 @@ setMethod(show, signature("individuals"),
                              Social = printSocial(object),
                              Repro = printRepro(object),
                              BirthMon = printBirthMon(object),
+                             MortMon = printMortMon(object),
                              Alive = printLive(object))))
 
-setMethod("Arith", signature(e1 = "individuals",
+setMethod("[",
+          signature(x = "individuals",
+                    i = "ANY",
+                    j = "missing",
+                    drop = "missing"),
+          function(x, i, j)
+            newInds(printIDs(x)[i],
+                    printGeno(x)[i],
+                    printSex(x)[i],
+                    printAge(x)[i],
+                    printSocial(x)[i],
+                    printRepro(x)[i],
+                    printBirthMon(x)[i],
+                    printMortMon(x)[i],
+                    printLive(x)[i]))
+
+setGeneric("addInds",
+           function(a, b)
+             standardGeneric("addInds")
+           )
+
+setMethod("addInds",
+          signature("individuals", "individuals"),
+          function(a, b) {
+            names <- slotNames(a)
+            for (name in names) {
+              slot(a, name) <- c(slot(a, name), slot(b, name))
+            }
+            if (anyDuplicated(a@ID)) stop("Non-unique animal IDs created")
+            return(a)
+          })
+
+## IDs[printLive(IDs)==TRUE]
+
+setGeneric("Arith", signature(e1 = "individuals",
                              e2 = "individuals"),
           function(e1, e2)
           {
