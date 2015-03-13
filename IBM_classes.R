@@ -1,6 +1,6 @@
 ############################################################################
 #  Individually based model investigating the genetic consequences of small
-#  cougar populations.  Started - 2/2015
+#  populations.  Started - 2/2015
 #  Author: Peter Mahoney, USU PhD Student
 ############################################################################
 
@@ -22,7 +22,7 @@ IDs = newInds(newIDs, sexes, genotypes, ages, socialStats, reproStats, birthMons
 ### Define Classes
 
 # Individual
-setClass("ind",
+setClass("individuals",
          representation(genotype = "character",
                         sex = "character",
                         ID = "numeric",
@@ -48,7 +48,7 @@ newInds <- function(newIDs, sexes, genotypes, ages, socialStats, reproStats, bir
   mortMon = as.numeric(rep(NA, nrecs))
   liveStat = as.logical(rep("TRUE", nrecs))
   
-  new("ind", ID = as.vector(newIDs),
+  new("individuals", ID = as.vector(newIDs),
              sex = as.vector(sexes),
              genotype = as.vector(genotypes),
              age = as.vector(ages),
@@ -72,7 +72,7 @@ printBirthMon <- function(individuals) individuals@birthMon
 printLive <- function(individuals) individuals@liveStat
 
 # Method functions
-setMethod(show, signature("ind"),
+setMethod(show, signature("individuals"),
           function(object)
             print(data.frame(ID = printIDs(object),
                              Genotype = printGeno(object),
@@ -83,8 +83,8 @@ setMethod(show, signature("ind"),
                              BirthMon = printBirthMon(object),
                              Alive = printLive(object))))
 
-setMethod("Arith", signature(e1 = "ind",
-                             e2 = "ind"),
+setMethod("Arith", signature(e1 = "individuals",
+                             e2 = "individuals"),
           function(e1, e2)
           {
             #if (!sameloc(e1, e2))
