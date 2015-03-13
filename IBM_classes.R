@@ -1,3 +1,9 @@
+############################################################################
+#  Individually based model investigating the genetic consequences of small
+#  cougar populations.  Started - 2/2015
+#  Author: Peter Mahoney, USU PhD Student
+############################################################################
+
 ########
 ## Test data
 ########
