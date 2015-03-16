@@ -81,6 +81,7 @@ a2$addToPop(pop1)
 a3$addToPop(pop1)
 pop1$tabIndsAll()
 pop1$pullAlive()
+pop1$tabAlive()
 
   # Print method for individual data
 indClass$methods(tab = function() {
@@ -118,6 +119,15 @@ indClass$methods(addToPop = function(popName) {
   # View individual data (tabulated ~ data.frame)
 popClass$methods(tabIndsAll = function() {
   dat <- field('indsAll')
+  out <- c()
+  for (r in 1:length(dat)) {
+    out = rbind(out, dat[[r]]$tab())
+  }
+  out
+})
+popClass$methods(tabAlive = function() {
+  dat <- field('indsAlive')
+  if (length(dat)==0) stop('No individuals are listed as alive.')
   out <- c()
   for (r in 1:length(dat)) {
     out = rbind(out, dat[[r]]$tab())
