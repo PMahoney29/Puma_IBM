@@ -8,6 +8,7 @@
 #Load required packages
 library(methods)
 library(adegenet)
+library(plyr)
 
 
 ########
@@ -34,11 +35,12 @@ popClass <- setRefClass(
   Class = 'popClass',
   fields = list(
     popID = 'character',
-    inds = 'list',
-    pop.size = 'numeric',
+    indsAll = 'list',
+    indsAlive = 'list',
     months = 'numeric',
-    lambda = 'numeric')
-  )
+    pop.size = 'numeric',
+    lambda = 'numeric'
+  ))
 
 indClass <- setRefClass(
   Class = 'indClass',
@@ -53,6 +55,7 @@ indClass <- setRefClass(
     birthMon = 'numeric',
     mortMon = 'numeric',
     genotype = 'data.frame'))
+
 #,
 #  prototypes = list(
 #    age = 0,
@@ -73,21 +76,26 @@ a2 <- indClass$new(animID="a2", sex=sex, age=age, socialStat=socialStat,
 a3 <- indClass$new(animID="a3", sex=sex, age=age, socialStat=socialStat, 
                    reproStat=reproStat, reproHist=reproHist, liveStat=liveStat, birthMon=birthMon, mortMon=mortMon, genotype=genotype)
 pop1 <- popClass$new(popID = 'Population_1')
+a1$addToPop(pop1)
+a2$addToPop(pop1)
+a3$addToPop(pop1)
+pop1$tabIndsAll()
+pop1$pullAlive()
 
   # Print method for individual data
 indClass$methods(tab = function() {
   fields <- names(.refClassDef@fieldClasses)
   out <- data.frame()
-  for (fi in unlist(fields)) {
+  for (fi in fields) {
     #####  Will need to fix depending on what I decide to do with genind() object classes
-    #if (class(field(fi))=='data.frame') {
-    #  g <- c(field(fi), sep = " ")
-    #  out[1,fi] <- do.call(paste, g)
-    #}
-    out[1,fi] <- field(fi)
+    if (class(field(fi))=='data.frame') {
+      g <- c(field(fi), sep = " ")
+      out[1,fi] <- do.call(paste, g)
+    }
+    else {out[1,fi] <- field(fi)}
   }
   names(out) <- fields
-  print(out)
+  out
  })
 
 
@@ -96,25 +104,41 @@ indClass$methods(addToPop = function(popName) {
   if(class(popName)[1]!="popClass") 
     stop("Population object must be of class : 'popClass'")
 
-  # Need to test for unique names
+  ## need to test for unique names
   
   # extending the list of individuals
-  popName$inds <- append(popName$inds, .self)
+  popName$indsAll <- append(popName$indsAll, .self)
+  
+  # updating population size
+  #popName$pop.size <- length(popName$inds)
 })
 
 
 ## popClass methods
   # View individual data (tabulated ~ data.frame)
-popClass$methods(tab = function() {
-  dat <- field('inds')
-  for (f in dat) {
+popClass$methods(tabIndsAll = function() {
+  dat <- field('indsAll')
+  out <- c()
+  for (r in 1:length(dat)) {
+    out = rbind(out, dat[[r]]$tab())
   }
+  out
 })
 
+  # Pull the live individuals and store in popClass$indsAlive
+popClass$methods(pullAlive = function() {
+  #alive <- llply(pop1$indsAll, function(x) if (x$liveStat==TRUE) x)
+  alive <- llply(field('indsAll'), function(x) if (x$liveStat==TRUE) x)
+  alive <- alive[!sapply(alive, is.null)]  
+  .self$indsAlive <- alive
+})
 
   # Update population count
 
   # Update months
   
   # Update lambda
+
+## aliveClass methods
+
 
