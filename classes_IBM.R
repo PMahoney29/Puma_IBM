@@ -10,10 +10,20 @@ library(methods)
 library(adegenet)
 library(plyr)
 
-
 ########
 ## Test data
 ########
+datum <- read.csv('./Data//TestGenData.csv')
+geninput <- datum[,1:2]
+cols <- seq(3, 110, by=2)
+for (c in cols) {
+ geninput <- cbind(geninput,paste(datum[,c], datum[,c+1],sep="_")) 
+ names(geninput)[ncol(geninput)] <- names(datum)[c]
+}
+genID <- df2genind(geninput[-c(1:2)], sep="_", ind.names=geninput$ID, loc.names=names(geninput[-c(1:2)]), missing = 0, type='codom') 
+mySamp <- genID[sample(1:nrow(genID@tab), 10)]
+mySamp
+
 animID = 'a1'
 sex = "F"
 age = 0
