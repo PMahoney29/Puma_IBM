@@ -37,7 +37,7 @@ popClass <- setRefClass(
     popID = 'character',
     indsAll = 'list',
     indsAlive = 'list',
-    months = 'numeric',
+    time = 'numeric',
     pop.size = 'numeric',
     lambda = 'numeric'
   ))
@@ -67,7 +67,7 @@ indClass <- setRefClass(
 #    mortMon = NA)
 #  )
 
-## indClass methods
+
   # Test instances of the above two classes
 a1 <- indClass$new(animID=animID, sex=sex, age=age, socialStat=socialStat, 
                    reproStat=reproStat, reproHist=reproHist, liveStat=liveStat, birthMon=birthMon, mortMon=mortMon, genotype=genotype)
@@ -75,7 +75,7 @@ a2 <- indClass$new(animID="a2", sex=sex, age=age, socialStat=socialStat,
                    reproStat=reproStat, reproHist=reproHist, liveStat=liveStat, birthMon=birthMon, mortMon=mortMon, genotype=genotype)
 a3 <- indClass$new(animID="a3", sex=sex, age=age, socialStat=socialStat, 
                    reproStat=reproStat, reproHist=reproHist, liveStat=liveStat, birthMon=birthMon, mortMon=mortMon, genotype=genotype)
-pop1 <- popClass$new(popID = 'Population_1')
+pop1 <- popClass$new(popID = 'Population_1', time=0)
 a1$addToPop(pop1)
 a2$addToPop(pop1)
 a3$addToPop(pop1)
@@ -83,6 +83,8 @@ pop1$tabIndsAll()
 pop1$pullAlive()
 pop1$tabAlive()
 
+
+## indClass methods
   # Print method for individual data
 indClass$methods(tab = function() {
   fields <- names(.refClassDef@fieldClasses)
@@ -109,9 +111,6 @@ indClass$methods(addToPop = function(popName) {
   
   # extending the list of individuals
   popName$indsAll <- append(popName$indsAll, .self)
-  
-  # updating population size
-  #popName$pop.size <- length(popName$inds)
 })
 
 
@@ -144,11 +143,20 @@ popClass$methods(pullAlive = function() {
 })
 
   # Update population count
+popClass$methods(updateCount = function() {
+  if (field('time') == 0) field('pop.size', length(field('indsAlive')))
+  else {field('pop.size', c(field('pop.size'), length(field('indsAlive'))))}
+})
 
-  # Update months
-  
+  # Update time
+popClass$methods(incremTime = function() {
+  field('time', field('time') + 1)
+  })
+
   # Update lambda
 
-## aliveClass methods
+
+
+
 
 
