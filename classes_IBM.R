@@ -28,10 +28,15 @@ write.csv(genout, "./Data/genotypes/startValues.csv")
 
 # Test instances of the above two classes
 startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
+lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:5)]))
+
 genoCols = 6:ncol(startValues); ID = "ID"; sex = 'sex'; age = 'age'; socialStat = 'socialStat'; reproStat = 'reproStat';
 pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
+testF <- pop1$indsAlive[[8]]
+testM <- pop1$indsAlive[[5]]
+testF$femBreed(testM, 1, 0.5, lociNames, pop1)
 
 #####################
 ## IBM classes
@@ -94,8 +99,8 @@ indClass$methods(addToPop = function(popName) {
   popName$indsAll <- append(popName$indsAll, .self)
 })
 
-  # Add method for female reprodcution.  Number of kittens needs to be generated in advance...
-indClass$methods(femBreed = function(maleID, numKittens, probFemaleKitt) {
+  # Add method for female reproduction.  Number of kittens needs to be generated in advance...
+indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames, population) {
   if(field('sex') != "F")
     stop("Input mother is not Female")
   if(field('liveStat') != TRUE)
@@ -103,13 +108,53 @@ indClass$methods(femBreed = function(maleID, numKittens, probFemaleKitt) {
   if(field('reproStat') != TRUE)
     stop("Input mother is not reproductive")
   
-  if(maleID$field('sex') != "M")
+  if(male$field('sex') != "M")
     stop("Input father is not male")
-  if(maleID$field('liveStat') != TRUE)
+  if(male$field('liveStat') != TRUE)
     stop("Input father is not alive and cannot reproduce!")
-  if(maleID$field('reproStat') != TRUE)
+  if(male$field('reproStat') != TRUE)
     stop("Input father is not reproductive")
 
+  pop <- length(population$indsAll)
+  
+  # Generate new individuals
+    # Determine IDs
+  idKitt <- paste('sid', seq(pop + 1, pop + numKittens), sep = "")
+  
+    # Determine sex
+  sexKitt <- runif(numKittens, min = 0, max = 1) <= probFemaleKitt
+  sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
+  
+    # Determine genotype..completely random following Mendelian principles
+  #gts <- rbind(testF$genotype, testM$genotype)
+  gts <- rbind(field('genotype'), male$genotype)
+  genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
+  for (l in 1:length(lociNames)) {
+    cols <- grep(lociNames[l], names(gts))
+    genoKitt[, cols] <- apply(gts[, cols], 1, function (x) sample(x, size = numKittens, replace = TRUE))
+  }
+  genoKitt <- as.data.frame(genoKitts)
+  names(genoKitt) <- names(gts)
+  
+    # Determine birth month
+  bm <- population$time
+  
+    # Loop new individuals
+  for (k in 1:numKittens) {
+    # gen Individual
+    ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
+                        reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=NA, genotype=genoKitt[k,])
+    #ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=testF$field("animID"), father=testM$field("animID"), socialStat="Kitten", 
+    #                    reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=NA, genotype=genoKitt[k,])
+    
+    # add to population
+    ind$addToPop(population)  
+  }
+  
+  # update individuals alive
+  population$pullAlive()
+  
+  # Update reproHist for mother and father
   
 })
 
