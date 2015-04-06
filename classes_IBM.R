@@ -55,6 +55,8 @@ indClass <- setRefClass(
     animID = 'character',
     sex = 'character',
     age = 'numeric',
+    mother = 'character',
+    father = 'character',
     socialStat = 'character',
     reproStat = 'logical',
     reproHist = 'numeric',
@@ -83,7 +85,7 @@ indClass$methods(tab = function() {
 
   # Add method for including individual data to popClass object
 indClass$methods(addToPop = function(popName) {
-  if(class(popName)[1]!="popClass") 
+  if(class(popName)[1] != "popClass") 
     stop("Population object must be of class : 'popClass'")
 
   ## need to test for unique names
@@ -92,12 +94,31 @@ indClass$methods(addToPop = function(popName) {
   popName$indsAll <- append(popName$indsAll, .self)
 })
 
+  # Add method for female reprodcution.  Number of kittens needs to be generated in advance...
+indClass$methods(femBreed = function(maleID, numKittens, probFemaleKitt) {
+  if(field('sex') != "F")
+    stop("Input mother is not Female")
+  if(field('liveStat') != TRUE)
+    stop("Input mother is not alive and cannot reproduce!")
+  if(field('reproStat') != TRUE)
+    stop("Input mother is not reproductive")
+  
+  if(maleID$field('sex') != "M")
+    stop("Input father is not male")
+  if(maleID$field('liveStat') != TRUE)
+    stop("Input father is not alive and cannot reproduce!")
+  if(maleID$field('reproStat') != TRUE)
+    stop("Input father is not reproductive")
+
+  
+})
 
 ## popClass methods
 popClass$methods(startPop = function(startValues, ID, sex, age, socialStat, reproStat, genoCols) {
   sv <- startValues
   for (r in 1:nrow(sv)) {
-    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], socialStat=sv[r,socialStat], reproStat=sv[r,reproStat], reproHist=0, 
+    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother="Unk", father="Unk", socialStat=sv[r,socialStat], 
+                        reproStat=sv[r,reproStat], reproHist=0, 
                         liveStat=TRUE, birthMon=0, mortMon=NA, genotype=sv[r,genoCols])
     ind$addToPop(.self)
   }
