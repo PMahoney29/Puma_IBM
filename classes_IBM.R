@@ -1,4 +1,4 @@
-############################################################################
+s############################################################################
 #  Individually based model classes
 #  investigating the genetic consequences of small populations.  
 #  Started - 2/2015
@@ -13,28 +13,24 @@ library(plyr)
 ########
 ## Test data
 ########
-datum <- read.csv('./Data//TestGenData.csv')
-geninput <- datum[,1:2]
-cols <- seq(3, 110, by=2)
+datum <- read.csv('./Data//genotypes//TestGenData.csv', skip = 2)
+geninput <- datum[,1:3]
+cols <- seq(ncol(geninput)+1, 110, by=2)
 for (c in cols) {
  geninput <- cbind(geninput,paste(datum[,c], datum[,c+1],sep="_")) 
  names(geninput)[ncol(geninput)] <- names(datum)[c]
 }
-genID <- df2genind(geninput[-c(1:2)], sep="_", ind.names=geninput$ID, loc.names=names(geninput[-c(1:2)]), missing = NA, type='codom') 
-mySamp <- genID[sample(1:nrow(genID@tab), 10)]
-mySamp
+genID <- df2genind(geninput[-c(1:3)], sep="_", ind.names=geninput$ID, loc.names=names(geninput[-c(1:3)]), missing = NA, type='codom') 
+#mySamp <- genID[sample(1:nrow(genID@tab), 10)]
+#mySamp
 genout <- genind2df(genID, oneColPerAll=TRUE)
-write.csv(genout, "startValues.csv")
+write.csv(genout, "./Data/genotypes/startValues.csv")
 
 # Test instances of the above two classes
-startValues <- read.csv('./Data//startValues.csv', stringsAsFactors=F)
-genoCols = 10:117; ID = "animID"; sex = 'sex'; age = 'age'; socialStat = 'socialStat'; reproStat = 'reproStat';
+startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
+genoCols = 6:ncol(startValues); ID = "ID"; sex = 'sex'; age = 'age'; socialStat = 'socialStat'; reproStat = 'reproStat';
 pop1 <- popClass$new(popID = 'Population_1', time=0)
-pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
-
-pop1$tabIndsAll()
-pop1$pullAlive()
-pop1$tabAlive()
+pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
 
 #####################
@@ -66,17 +62,6 @@ indClass <- setRefClass(
     birthMon = 'numeric',
     mortMon = 'ANY',         ## Need to fix to be either numeric or NA
     genotype = 'data.frame'))
-
-#,
-#  prototypes = list(
-#    age = 0,
-#    socialStat = "Pup",
-#    reproStat = FALSE,
-#    reproHist = 0,
-#    liveStat = TRUE,
-#    birthMon = 0,
-#    mortMon = NA)
-#  )
 
 
 ## indClass methods
