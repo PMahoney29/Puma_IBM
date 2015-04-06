@@ -36,7 +36,7 @@ pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat
 
 testF <- pop1$indsAlive[[8]]
 testM <- pop1$indsAlive[[5]]
-testF$femBreed(testM, 1, 0.5, lociNames, pop1)
+testF$femBreed(testM, 3, 0.5, lociNames, pop1)
 
 #####################
 ## IBM classes
@@ -144,8 +144,6 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
                         reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=NA, genotype=genoKitt[k,])
-    #ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=testF$field("animID"), father=testM$field("animID"), socialStat="Kitten", 
-    #                    reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=NA, genotype=genoKitt[k,])
     
     # add to population
     ind$addToPop(population)  
@@ -155,7 +153,8 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   population$pullAlive()
   
   # Update reproHist for mother and father
-  
+  field("reproHist", c(field("reproHist"), numKittens))
+  male$field("reproHist", c(male$field("reproHist"), numKittens))
 })
 
 ## popClass methods
