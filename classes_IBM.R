@@ -32,7 +32,7 @@ write.csv(genout, "./Data/genotypes/startValues.csv")
 startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:5)]))
 
-genoCols = 6:ncol(startValues); ID = "ID"; sex = 'sex'; age = 'age'; socialStat = 'socialStat'; reproStat = 'reproStat';
+genoCols = 6:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
@@ -66,10 +66,10 @@ indClass <- setRefClass(
     father = 'character',
     socialStat = 'character',
     reproStat = 'logical',
-    reproHist = 'numeric',
+    reproHist = 'character',   ## another way of handling??
     liveStat = 'logical',
     birthMon = 'numeric',
-    mortMon = 'ANY',         ## Need to fix to be either numeric or NA
+    mortMon = 'numeric',
     genotype = 'data.frame'))
 
 
@@ -135,7 +135,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
     cols <- grep(lociNames[l], names(gts))
     genoKitt[, cols] <- apply(gts[, cols], 1, function (x) sample(x, size = numKittens, replace = TRUE))
   }
-  genoKitt <- as.data.frame(genoKitts)
+  genoKitt <- as.data.frame(genoKitt)
   names(genoKitt) <- names(gts)
   
     # Determine birth month
@@ -145,7 +145,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   for (k in 1:numKittens) {
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
-                        reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=NA, genotype=genoKitt[k,])
+                        reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
     
     # add to population
     ind$addToPop(population)  
@@ -163,9 +163,9 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 popClass$methods(startPop = function(startValues, ID, sex, age, socialStat, reproStat, genoCols) {
   sv <- startValues
   for (r in 1:nrow(sv)) {
-    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother="Unk", father="Unk", socialStat=sv[r,socialStat], 
-                        reproStat=sv[r,reproStat], reproHist=0, 
-                        liveStat=TRUE, birthMon=0, mortMon=NA, genotype=sv[r,genoCols])
+    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=as.character(NA), father=as.character(NA), socialStat=sv[r,socialStat], 
+                        reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
+                        genotype=sv[r,genoCols])
     ind$addToPop(.self)
   }
   .self$pullAlive()
