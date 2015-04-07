@@ -11,7 +11,7 @@ library(adegenet)
 library(plyr)
 
 ########
-## Test data
+## Initial Values modification
 ########
 datum <- read.csv('./Data//genotypes//TestGenData.csv', skip = 2)
 geninput <- datum[,1:3]
@@ -25,8 +25,10 @@ genID <- df2genind(geninput[-c(1:3)], sep="_", ind.names=geninput$ID, loc.names=
 #mySamp
 genout <- genind2df(genID, oneColPerAll=TRUE)
 write.csv(genout, "./Data/genotypes/startValues.csv")
+##########
+##########
 
-# Test instances of the above two classes
+# Test instances of the two classes
 startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:5)]))
 
