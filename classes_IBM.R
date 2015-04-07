@@ -10,35 +10,16 @@ library(methods)
 library(adegenet)
 library(plyr)
 
-########
-## Initial Values modification
-########
-datum <- read.csv('./Data//genotypes//TestGenData.csv', skip = 2)
-geninput <- datum[,1:3]
-cols <- seq(ncol(geninput)+1, 110, by=2)
-for (c in cols) {
- geninput <- cbind(geninput,paste(datum[,c], datum[,c+1],sep="_")) 
- names(geninput)[ncol(geninput)] <- names(datum)[c]
-}
-genID <- df2genind(geninput[-c(1:3)], sep="_", ind.names=geninput$ID, loc.names=names(geninput[-c(1:3)]), missing = NA, type='codom') 
-#mySamp <- genID[sample(1:nrow(genID@tab), 10)]
-#mySamp
-genout <- genind2df(genID, oneColPerAll=TRUE)
-write.csv(genout, "./Data/genotypes/startValues.csv")
-##########
-##########
-
 # Test instances of the two classes
-startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
-lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:5)]))
+startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
+lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
 
-genoCols = 6:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
+genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 pop1 <- popClass$new(popID = 'Population_1', time=0)
-pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
+pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
+              socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
-testF <- pop1$indsAlive[[8]]
-testM <- pop1$indsAlive[[5]]
-testF$femBreed(testM, 3, 0.5, lociNames, pop1)
+
 
 #####################
 ## IBM classes
@@ -145,7 +126,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   for (k in 1:numKittens) {
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
-                        reproStat=FALSE, reproHist=0, liveStat=TRUE, birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
+                        reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
     
     # add to population
     ind$addToPop(population)  
@@ -155,15 +136,15 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   population$pullAlive()
   
   # Update reproHist for mother and father
-  field("reproHist", c(field("reproHist"), numKittens))
-  male$field("reproHist", c(male$field("reproHist"), numKittens))
+  field("reproHist", paste(field("reproHist"), numKittens, sep=","))
+  male$field("reproHist", paste(male$field("reproHist"), numKittens, sep=","))
 })
 
 ## popClass methods
-popClass$methods(startPop = function(startValues, ID, sex, age, socialStat, reproStat, genoCols) {
+popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols) {
   sv <- startValues
   for (r in 1:nrow(sv)) {
-    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=as.character(NA), father=as.character(NA), socialStat=sv[r,socialStat], 
+    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
                         genotype=sv[r,genoCols])
     ind$addToPop(.self)
