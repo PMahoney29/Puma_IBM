@@ -27,11 +27,14 @@ genout <- genind2df(genID, oneColPerAll=TRUE)
 write.csv(genout, "./Data/genotypes/startValues.csv")
 
 startValues <- read.csv('./Data/genotypes/startValues.csv', stringsAsFactors=F)
-lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:5)]))
+startValues$mother <- as.character(startValues$mother)
+startValues$father <- as.character(startValues$father)
+lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:7)]))
 
-genoCols = 6:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
+genoCols = 8:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 pop1 <- popClass$new(popID = 'Population_1', time=0)
-pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
+pop1$startPop(startValues=startValues, ID='ID', sex='sex', age='age', mother='mother', father= 'father', 
+              socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
 testF23 <- pop1$indsAlive[[6]]
 testF13 <- pop1$indsAlive[[3]]
@@ -50,6 +53,6 @@ testF13$femBreed(testM22, 1, 0, lociNames, pop1)
 pop1$indsAll[[15]]$socialStat <- 'SubAdult'
 
 out <- pop1$tabAlive()
-write.csv(out, "startValues_complete.csv", row.names=FALSE, na = "")
+write.csv(out, "./Data/genotypes/startValues_complete.csv", row.names=FALSE, na = "")
 ##########
 ##########
