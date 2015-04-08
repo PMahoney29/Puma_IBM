@@ -9,6 +9,7 @@ s############################################################################
 library(methods)
 library(adegenet)
 library(plyr)
+library(popbio)
 
 # Test instances of the two classes
 startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
@@ -19,6 +20,24 @@ pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
               socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
+for (i in 1:100) {
+pop1$kill(surv)
+}
+
+###########################
+##   general functions   ##
+###########################
+surv <- read.csv('./Data/survival//survivalMonthly.csv')
+
+# Derive environmentally stochastic survival rates for each time step
+newSurv <- function(surv) {
+  ##############################################
+  ## ADD CHECKS FOR NAMING OF LEVELS AND COLUMNS
+  ##############################################
+  out <- surv
+  out[, "s"] <- unlist(lapply(1:nrow(surv), function(x) betaval(surv[x, "s"], surv[x, "se"])))
+  out[, -which(names(out)=="se")]
+}
 
 
 #####################
@@ -54,7 +73,12 @@ indClass <- setRefClass(
     genotype = 'data.frame'))
 
 
-## indClass methods
+
+
+##########################
+##   indClass methods   ##
+##########################
+
   # Print method for individual data
 indClass$methods(tab = function() {
   fields <- names(.refClassDef@fieldClasses)
@@ -109,7 +133,6 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
   
     # Determine genotype..completely random following Mendelian principles
-  #gts <- rbind(testF$genotype, testM$genotype)
   gts <- rbind(field('genotype'), male$genotype)
   genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
   for (l in 1:length(lociNames)) {
@@ -136,11 +159,16 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   population$pullAlive()
   
   # Update reproHist for mother and father
-  field("reproHist", paste(field("reproHist"), numKittens, sep=","))
-  male$field("reproHist", paste(male$field("reproHist"), numKittens, sep=","))
+  field("reproHist", paste(field("reproHist"), numKittens, sep=":"))
+  male$field("reproHist", paste(male$field("reproHist"), numKittens, sep=":"))
 })
 
-## popClass methods
+
+
+##########################
+##   popClass methods   ##
+##########################
+
 popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols) {
   sv <- startValues
   for (r in 1:nrow(sv)) {
@@ -191,6 +219,25 @@ popClass$methods(incremTime = function() {
   })
 
   # Update lambda
+
+  # Assess survival
+popClass$methods(kill = function(surv) {
+  tSurv <- newSurv(surv)
+  alive <- field("indsAlive")
+  
+  # Assess survival
+  for (i in 1:length(alive)) {
+    ind <- alive[[i]]
+    si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
+    ind$liveStat <- runif(1) <= si
+  }
+  
+  .self$pullAlive()
+})
+
+
+
+
 
 
 
