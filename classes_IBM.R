@@ -20,14 +20,17 @@ pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
               socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
-for (i in 1:100) {
-pop1$kill(surv)
+surv <- read.csv('./Data/survival//survivalMonthly.csv')
+ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
+
+for (i in 1:1) {
+  pop1$stageAdjust(ageTrans)
+  pop1$incremTime()
 }
 
 ###########################
 ##   general functions   ##
 ###########################
-surv <- read.csv('./Data/survival//survivalMonthly.csv')
 
 # Derive environmentally stochastic survival rates for each time step
 newSurv <- function(surv) {
@@ -216,7 +219,14 @@ popClass$methods(updateCount = function() {
   # Update time
 popClass$methods(incremTime = function() {
   field('time', field('time') + 1)
-  })
+  
+  # age individuals
+  alive <- field("indsAlive")
+  for (i in 1:length(alive)) {
+    #alive[[i]]$age <- sum(alive[[i]]$age, 1, na.rm=T)
+    alive[[i]]$age <- alive[[i]]$age + 1
+  }  
+})
 
   # Update lambda
 
@@ -233,6 +243,37 @@ popClass$methods(kill = function(surv) {
   }
   
   .self$pullAlive()
+})
+
+  # Asses stage transitions
+popClass$methods(stageAdjust = function(ageTrans) {
+  kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
+  subAdultAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='SubAdult') x)
+  
+  #kitsAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='Kitten') x)
+  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
+  #subAdultAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='SubAdult') x)
+  subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
+  
+  for (k in 1:length(kitsAlive)) {
+    kind <- kitsAlive[[k]]
+    if (kind$sex == 'F') {
+     if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+    }
+    else {
+      if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+    }
+  }
+  
+  for (sa in 1:length(subAdultAlive)) {
+    sind <- subAdultAlive[[sa]]
+    if (sind$sex == 'F') {
+      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) sind$socialStat = "Adult" 
+    }
+    else {
+      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) sind$socialStat = "Adult" 
+    }
+  }
 })
 
 
