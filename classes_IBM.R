@@ -1,4 +1,4 @@
-s############################################################################
+############################################################################
 #  Individually based model classes
 #  investigating the genetic consequences of small populations.  
 #  Started - 2/2015
@@ -10,6 +10,7 @@ library(methods)
 library(adegenet)
 library(plyr)
 library(popbio)
+library(Rhh)
 
 # Test instances of the two classes
 startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
@@ -60,7 +61,8 @@ popClass <- setRefClass(
     activeLitters = 'list',
     time = 'numeric',
     pop.size = 'numeric',
-    lambda = 'numeric'
+    lambda = 'numeric',
+    extinct = 'logical'
   ))
 
 indClass <- setRefClass(
@@ -176,6 +178,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 
 popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols) {
   sv <- startValues
+  field('extinct', FALSE)
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
@@ -209,7 +212,7 @@ popClass$methods(pullAlive = function() {
   #alive <- llply(pop1$indsAll, function(x) if (x$liveStat==TRUE) x)
   alive <- llply(field('indsAll'), function(x) if (x$liveStat==TRUE) x)
   alive <- alive[!sapply(alive, is.null)]  
-  .self$indsAlive <- alive
+  field('indsAlive', alive)
 })
 
   # Update population count
@@ -231,6 +234,8 @@ popClass$methods(incremTime = function() {
 })
 
   # Update lambda
+
+  # Update extinction
 
   # Check breeding status
 popClass$methods(updateBreedStat = function() {
@@ -276,19 +281,28 @@ popClass$methods(updateBreedStat = function() {
 })
 
   # Assess reproduction
-#popClass$methods(reproduce = function(probBreed) {
-#  tPB <- betaval(probBreed$prob, probBreed$se)
-#  alive <- field("indsAlive")
-#  
-#  # Assess survival
-#  for (i in 1:length(alive)) {
-#    ind <- alive[[i]]
-#    si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
-#    ind$liveStat <- runif(1) <= si
-#  }
-#  
-#  .self$pullAlive()
-#  })
+popClass$methods(reproduce = function(probBreed) {
+  tPB <- betaval(probBreed$prob, probBreed$se)
+  #f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F") x)
+  #m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M") x)
+  f_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  m_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  f_alive <- f_alive[!sapply(f_alive, is.null)]  
+  m_alive <- m_alive[!sapply(m_alive, is.null)]  
+  
+  #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
+  if (length(f_alive) == 0 | length(m_alive) == 0) next
+  
+  else {
+    for (f in length(f_alive):1) {
+      
+      f_alive[[f]]
+    }
+  }
+  
+  
+
+})
 
   # Assess survival
 popClass$methods(kill = function(surv) {
@@ -328,10 +342,16 @@ popClass$methods(stageAdjust = function(ageTrans) {
   for (sa in 1:length(subAdultAlive)) {
     sind <- subAdultAlive[[sa]]
     if (sind$sex == 'F') {
-      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) sind$socialStat = "Adult" 
+      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
+        sind$socialStat = "Adult" 
+        sind$reproStat = TRUE
+      }
     }
     else {
-      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) sind$socialStat = "Adult" 
+      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
+        sind$socialStat = "Adult" 
+        sind$reproStat = TRUE
+      }
     }
   }
 })
