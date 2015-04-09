@@ -253,20 +253,26 @@ popClass$methods(updateBreedStat = function() {
         aL[[l]] <- NULL
       }
       
-      else {    
-        for (k in length(aL[[l]]$kittens):1) {
-          # Pulling dead kittens
-          if (aL[[l]]$kittens[[k]]$liveStat == FALSE) aL[[l]]$kittens[[k]] <- NULL
-        
-          # Pulling dispersed kittens (SubAdults)
-          if (aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
+      else {
+        if (length(aL[[l]]$kittens) > 0) {
+          for (k in length(aL[[l]]$kittens):1) {
+            # Pulling dead kittens or dispersed kittens (SubAdults)
+            if (aL[[l]]$kittens[[k]]$liveStat == FALSE | aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
+          }
+          
+          #increment gestation
+          if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
         }
-        
+
+        else {
         #increment gestation
-        if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+        aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+        }
       }
     }
   }
+  
+  field('activeLitters', aL)
 })
 
   # Assess reproduction
