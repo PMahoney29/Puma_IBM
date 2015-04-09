@@ -20,13 +20,16 @@ pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
               socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
 
+aLit <- list(mother=pop1$indsAll[[3]], kittens = list(pop1$indsAll[[12]],pop1$indsAll[[13]]), gestation = 0)
+aLit <- append(list(aLit), list(list(mother=pop1$indsAll[[6]], kittens = list(pop1$indsAll[[10]],pop1$indsAll[[11]]), gestation = 0)))
+pop1$activeLitters <- aLit
+aL <- aLit
+
+
 surv <- read.csv('./Data/survival//survivalMonthly.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
+probBreed <- read.csv('./Data/probBreed/probBreed_monthly.csv')
 
-for (i in 1:1) {
-  pop1$stageAdjust(ageTrans)
-  pop1$incremTime()
-}
 
 ###########################
 ##   general functions   ##
@@ -54,6 +57,7 @@ popClass <- setRefClass(
     popID = 'character',
     indsAll = 'list',
     indsAlive = 'list',
+    activeLitters = 'list',
     time = 'numeric',
     pop.size = 'numeric',
     lambda = 'numeric'
@@ -74,8 +78,6 @@ indClass <- setRefClass(
     birthMon = 'numeric',
     mortMon = 'numeric',
     genotype = 'data.frame'))
-
-
 
 
 ##########################
@@ -229,6 +231,58 @@ popClass$methods(incremTime = function() {
 })
 
   # Update lambda
+
+  # Check breeding status
+popClass$methods(updateBreedStat = function() {
+  aL <- field('activeLitters')
+  
+  # Adjust litters based on mortality
+  for (l in length(aL):1) {
+    if (aL[[l]]$mother$liveStat == FALSE) {
+      # kill any remaining kittens
+      invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") x$liveStat <- FALSE))
+      
+      # remove litters
+      aL[[l]] <- NULL
+    }
+    
+    else {
+      # change female reproductive status after gestation
+      if (aL[[l]]$gestation >= 3) {
+        aL[[l]]$mother$reproStat <- TRUE  
+        aL[[l]] <- NULL
+      }
+      
+      else {    
+        for (k in length(aL[[l]]$kittens):1) {
+          # Pulling dead kittens
+          if (aL[[l]]$kittens[[k]]$liveStat == FALSE) aL[[l]]$kittens[[k]] <- NULL
+        
+          # Pulling dispersed kittens (SubAdults)
+          if (aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
+        }
+        
+        #increment gestation
+        if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+      }
+    }
+  }
+})
+
+  # Assess reproduction
+#popClass$methods(reproduce = function(probBreed) {
+#  tPB <- betaval(probBreed$prob, probBreed$se)
+#  alive <- field("indsAlive")
+#  
+#  # Assess survival
+#  for (i in 1:length(alive)) {
+#    ind <- alive[[i]]
+#    si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
+#    ind$liveStat <- runif(1) <= si
+#  }
+#  
+#  .self$pullAlive()
+#  })
 
   # Assess survival
 popClass$methods(kill = function(surv) {
