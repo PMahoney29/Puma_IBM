@@ -305,7 +305,6 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
   adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
   kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
-  subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
   adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
   adultMalesAlive <- adultFemalesAlive[!sapply(adultMalesAlive, is.null)]
   subAdultFAlive <- subAdultFAlive[!sapply(subAdultFAlive, is.null)]
@@ -327,11 +326,12 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     allowF <- Kf - length(adultFemalesAlive)
     
     if (allowF == 0) {
-      invisible(llply(subAdultFAlive, function(x) {
-        x$liveStat = FALSE
-        x$mortMon = .self$time
-      }))
-    }
+      for (saf in 1:length(subAdultFAlive)) {
+        if (subAdultFAlive[[saf]]$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
+          x$liveStat = FALSE
+          x$mortMon = .self$time
+        }
+      }
     else {
       samp <- sample(1:length(subAdultFAlive), size = allowF)
       invisible(llply(subAdultFAlive[samp], function(x) {
