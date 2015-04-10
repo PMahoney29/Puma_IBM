@@ -61,9 +61,26 @@ createGenInput <- function(gen) {
 
 #####################
 ## IBM classes
-## popClass <- population classes that serves as a container for indClass (inividuals)
+## simClass <- contains population iterations
+## popClass <- population classes that serves as a container for indClass (individuals)
 ## indClass <- individual class, so far does not 'contain' popClass
 #####################
+simClass <- setRefClass(
+  Class = 'simClass',
+  fields = list(
+    populations = 'list',
+    pop.size = 'data.frame',
+    lambda = 'data.frame',
+    extinct = 'numeric',
+    Na = 'data.frame',
+    Ne = 'data.frame',
+    PropPoly = 'data.frame',
+    He = 'data.frame',
+    Ho = 'data.frame',
+    IR = 'data.frame',
+    Fis = 'data.frame'
+  ))
+
 popClass <- setRefClass(
   Class = 'popClass',
   fields = list(
@@ -253,10 +270,6 @@ popClass$methods(pullAlive = function() {
   field('indsAlive', alive)
 })
 
-  # Update lambda
-
-  # Update extinction
-
 # Assess stage transitions
 popClass$methods(stageAdjust = function(ageTrans) {
   kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
@@ -311,7 +324,7 @@ popClass$methods(updateBreedStat = function() {
         if (length(aL[[l]]$kittens) > 0) {
          for (ks in 1:length(aL[[l]]$kittens)) {
            aL[[l]]$kittens[[ks]]$liveStat <- FALSE
-           aL[[l]]$kittens[[ks]]$mortMonth <- .self$time
+           aL[[l]]$kittens[[ks]]$mortMon <- .self$time
          }
         }
         #invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") {
@@ -427,14 +440,17 @@ popClass$methods(updateStats = function() {
     
    # lambda
     if (field('time') == 0) .self$lambda[, year] <- 1
-    else {.self$lambda[, year] <- .self$pop.size[length(field('pop.size'))] / .self$pop.size[length(field('pop.size')) - 12]}
+    else {.self$lambda[, year] <- .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size'))] / .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size')) - 12]}
     #if (field('time') == 0) field('lambda', as.numeric(NA))
     #else {field('pop.size')[length(field('pop.size'))] / field('pop.size')[length(field('pop.size')) - 12]}
     
     ### Genetic metrics
     g <- pullGenos(iAlive)
     g_genind <- df2genind(createGenInput(g), sep="_")
+    sink('aux')
+    sumGind <- summary(g_genind)
     g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
+    sink(NULL)
     
     # Allelic richness Na
     .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
@@ -448,10 +464,8 @@ popClass$methods(updateStats = function() {
     #field('PropPoly', c(field('PropPoly'), sum(isPoly(g_genind, by=c("locus"))) / length(g_genind@loc.names)))
     
     # Expected heterozygosity He and Ho
-    sink('aux')
-    Hexp <- summary(g_genind)$Hexp
-    Hobs <- summary(g_genind)$Hobs
-    sink(NULL)
+    Hexp <- sumGind$Hexp
+    Hobs <- sumGind$Hobs
     .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
     .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
     #field('He', c(field('He'), matrix(c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp))), ncol=1, nrow=2, byrow=F)))
@@ -482,7 +496,13 @@ popClass$methods(incremTime = function() {
 
 
 
+##########################
+##   simClass methods   ##
+##########################
 
+simClass$methods(startSim = function(iter, years) {
+  
+  })
 
 
 
