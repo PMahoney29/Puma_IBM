@@ -15,8 +15,8 @@ library(Rhh)
 # Test instances of the two classes
 startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
-
 genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
+
 pop1 <- popClass$new(popID = 'Population_1', time=0)
 pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
               socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
@@ -26,10 +26,15 @@ aLit <- append(list(aLit), list(list(mother=pop1$indsAll[[6]], kittens = list(po
 pop1$activeLitters <- aLit
 aL <- aLit
 
-
 surv <- read.csv('./Data/survival//survivalMonthly.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
-probBreed <- read.csv('./Data/probBreed/probBreed_monthly.csv')
+probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
+litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
+  l2 <- litterProbs[1, 'prob']
+  l3 <- litterProbs[2, 'prob'] + l2
+  l4 <- litterProbs[3, 'prob'] + l3
+probFemaleKitt <- 0.5
+
 
 
 ###########################
@@ -44,6 +49,17 @@ newSurv <- function(surv) {
   out <- surv
   out[, "s"] <- unlist(lapply(1:nrow(surv), function(x) betaval(surv[x, "s"], surv[x, "se"])))
   out[, -which(names(out)=="se")]
+}
+
+# Generate litter size for COUGARS...needs to be adjusted for other species
+littSize <- function(l2, l3, l4) {
+  indProb <- runif(1)
+  
+  if (indProb <= l2) o <- 2
+  if (indProb > l2 & indProb <= l3) o <- 3
+  if (indProb > l3) o <- 4
+  
+  o
 }
 
 
@@ -141,6 +157,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   
     # Determine genotype..completely random following Mendelian principles
   gts <- rbind(field('genotype'), male$genotype)
+
   genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
   for (l in 1:length(lociNames)) {
     cols <- grep(lociNames[l], names(gts))
@@ -153,21 +170,29 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   bm <- population$time
   
     # Loop new individuals
+  kittens <- list()
   for (k in 1:numKittens) {
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
                         reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
-    
+
     # add to population
-    ind$addToPop(population)  
+    ind$addToPop(population) 
+    kittens <- append(kittens, ind)
   }
   
   # update individuals alive
   population$pullAlive()
   
-  # Update reproHist for mother and father
+  # update activeLitters
+  population$activeLitters <- append(population$activeLitters, 
+                                    list(list(mother=.self, kittens = kittens, gestation = 0)))
+                                    
+  # Update reproHist and reproStat for mother and father
+  field("reproStat", FALSE)
   field("reproHist", paste(field("reproHist"), numKittens, sep=":"))
   male$field("reproHist", paste(male$field("reproHist"), numKittens, sep=":"))
+  #male$field("reproStat", FALSE)
 })
 
 
@@ -281,12 +306,15 @@ popClass$methods(updateBreedStat = function() {
 })
 
   # Assess reproduction
-popClass$methods(reproduce = function(probBreed) {
+popClass$methods(reproduce = function(l2,l3,l4,probFemaleKitt,lociNames) {
+  # Generate monthly probability of breeding
   tPB <- betaval(probBreed$prob, probBreed$se)
-  #f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F") x)
-  #m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M") x)
-  f_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  m_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  
+  # Pull reproductive adults
+  f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F") x)
+  m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M") x)
+  #f_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  #m_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   f_alive <- f_alive[!sapply(f_alive, is.null)]  
   m_alive <- m_alive[!sapply(m_alive, is.null)]  
   
@@ -295,13 +323,19 @@ popClass$methods(reproduce = function(probBreed) {
   
   else {
     for (f in length(f_alive):1) {
+      if (runif(1) <= tPB) {
+        # Select male mate
+        mate <- sample(m_alive, size = 1)
       
-      f_alive[[f]]
+        # Generate number of kitts
+        numKitts <- littSize(l2, l3, l4)
+      
+        # Breed
+        #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
+        f_alive[[f]]$femBreed(mate, numKitts, probFemaleKitt, lociNames, .self)
+      }
     }
   }
-  
-  
-
 })
 
   # Assess survival
@@ -314,6 +348,9 @@ popClass$methods(kill = function(surv) {
     ind <- alive[[i]]
     si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
     ind$liveStat <- runif(1) <= si
+    
+    #update mortMon for individual
+    if (ind$liveStat == FALSE) ind$mortMon <- .self$time
   }
   
   .self$pullAlive()
