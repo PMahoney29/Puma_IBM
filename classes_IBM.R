@@ -234,6 +234,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   field('lambda', data.frame(Y0 = c(0)))
   field('PropPoly', data.frame(Y0 = c(0)))
   
+  # Instantiate individuals
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
@@ -241,6 +242,31 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
     ind$addToPop(.self)
   }
   .self$pullAlive()
+  
+  # Identify active litters
+  iAlive <- field('indsAlive')
+  aLit <- list() 
+  
+    # pull current kittens
+  kLits <- llply(iAlive, function (x) if (x$socialStat == 'Kitten') x)
+  kLits <- kLits[!sapply(kLits, is.null)]  
+    # determine mothers
+  mo <- unique(unlist(llply(kLits, function(x) x$mother)))
+  for (m in mo) {
+   mother <- llply(iAlive, function(x) if (x$animID == m) x)
+   mother <- mother[!sapply(mother, is.null)]
+   
+   kits <- llply(iAlive, function(x) if (x$mother == m) x)
+   kits <- kits[!sapply(kits, is.null)]
+   
+   newLitter <- list(mother = mother[[1]], kittens = kits, gestation = 0)
+   aLit <- append(aLit, list(newLitter))
+  }
+  
+  .self$activeLitters <- aLit
+  
+  # Update stats
+  .self$updateStats()
 })
 
   # View individual data (tabulated ~ data.frame)
@@ -271,14 +297,19 @@ popClass$methods(pullAlive = function() {
 })
 
 # Assess stage transitions
-popClass$methods(stageAdjust = function(ageTrans) {
-  kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
-  subAdultAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='SubAdult') x)
-  
-  #kitsAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='Kitten') x)
+popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
+  iAlive <- field('indsAlive')
+  kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
+  subAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F') x)
+  subAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M') x)
+  adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
+  adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
   kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
-  #subAdultAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='SubAdult') x)
   subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
+  adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
+  adultMalesAlive <- adultFemalesAlive[!sapply(adultMalesAlive, is.null)]
+  subAdultFAlive <- subAdultFAlive[!sapply(subAdultFAlive, is.null)]
+  subAdultMAlive <- subAdultMAlive[!sapply(subAdultMAlive, is.null)]
   
   if (length(kitsAlive) > 0) {
     for (k in 1:length(kitsAlive)) {
@@ -292,24 +323,50 @@ popClass$methods(stageAdjust = function(ageTrans) {
     }
   }
   
-  if (length(subAdultAlive) > 0) {
-    for (sa in 1:length(subAdultAlive)) {
-      sind <- subAdultAlive[[sa]]
-      if (sind$sex == 'F') {
-        if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
-          sind$socialStat = "Adult" 
-          sind$reproStat = TRUE
-        }
-      }
-
-      else {
-        if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
-          sind$socialStat = "Adult" 
-          sind$reproStat = TRUE
-        }
-      }
+  if (length(subAdultFAlive) > 0) {
+    allowF <- Kf - length(adultFemalesAlive)
+    
+    if (allowF == 0) {
+      invisible(llply(subAdultFAlive, function(x) {
+        x$liveStat = FALSE
+        x$mortMon = .self$time
+      }))
+    }
+    else {
+      samp <- sample(1:length(subAdultFAlive), size = allowF)
+      invisible(llply(subAdultFAlive[samp], function(x) {
+        x$socialStat = 'Adult'
+        x$reproStat = TRUE
+      }))
+      invisible(llply(subAdultFAlive[-samp], function(x) {
+        x$liveStat = FALSE
+        x$mortMon = .self$time
+      }))
     }
   }
+    
+  if (length(subAdultMAlive) > 0) {
+    allowM <- Km - length(adultMalesAlive)
+    
+    if (allowM == 0) {
+      invisible(llply(subAdultMAlive, function(x) {
+        x$liveStat = FALSE
+        x$mortMon = .self$time
+      }))
+    }
+    else {
+      samp <- sample(1:length(subAdultMAlive), size = allowM)
+      invisible(llply(subAdultMAlive[samp], function(x) {
+        x$socialStat = 'Adult'
+        x$reproStat = TRUE
+      }))
+      invisible(llply(subAdultMAlive[-samp], function(x) {
+        x$liveStat = FALSE
+        x$mortMon = .self$time
+      }))
+    }
+  }
+  
 })
 
   # Check breeding status
@@ -327,10 +384,6 @@ popClass$methods(updateBreedStat = function() {
            aL[[l]]$kittens[[ks]]$mortMon <- .self$time
          }
         }
-        #invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") {
-        #                                                    x$liveStat <- FALSE
-        #                                                    x$mortMonth <- .self$time
-        #                                                    }))
       
         # remove litters
         aL[[l]] <- NULL
@@ -441,8 +494,6 @@ popClass$methods(updateStats = function() {
    # lambda
     if (field('time') == 0) .self$lambda[, year] <- 1
     else {.self$lambda[, year] <- .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size'))] / .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size')) - 12]}
-    #if (field('time') == 0) field('lambda', as.numeric(NA))
-    #else {field('pop.size')[length(field('pop.size'))] / field('pop.size')[length(field('pop.size')) - 12]}
     
     ### Genetic metrics
     g <- pullGenos(iAlive)
@@ -454,31 +505,24 @@ popClass$methods(updateStats = function() {
     
     # Allelic richness Na
     .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
-    #field('Na', cbind(field('Na'), 
-    #                  matrix(c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall))), ncol=1, nrow=2, byrow=F)))
     
     # Effective Ne
     
     # Proportion of alleles polymorphic
     .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
-    #field('PropPoly', c(field('PropPoly'), sum(isPoly(g_genind, by=c("locus"))) / length(g_genind@loc.names)))
     
     # Expected heterozygosity He and Ho
     Hexp <- sumGind$Hexp
     Hobs <- sumGind$Hobs
     .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
     .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
-    #field('He', c(field('He'), matrix(c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp))), ncol=1, nrow=2, byrow=F)))
-    #field('Ho', c(field('Ho'), matrix(c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs))), ncol=1, nrow=2, byrow=F)))
     
     # Individual heterozygosity IR
     .self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
-    #field('IR', cbind(field('IR'), matrix(c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g))), ncol=1, nrow=2, byrow=F)))
     
     # Inbreeding coefficient Fis
     Fis_ind <- sapply(inbreeding(g_genind, N=100), mean)
     .self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
-    #field('Fis', cbind(field('Fis'), matrix(c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind))), ncol=1, nrow=2, byrow=F)))
   }
 })
 
@@ -500,9 +544,29 @@ popClass$methods(incremTime = function() {
 ##   simClass methods   ##
 ##########################
 
-simClass$methods(startSim = function(iter, years) {
+simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, surv, ageTrans, probBreed, litterProbs, probFemaleKitt) {
+  for (i in 1:iter) {
+    # new instances of popClass
+    popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
+    
+    # fill with starting values
+    popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
+                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
+    
+    # simulate population
+    months <- years * 12
+    for (m in 1:months) {
+      popi$incremTime()
+      popi$stageAdjust(ageTrans)
+      popi$updateBreedStat()
+      popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
+      popi$kill(surv)
+      popi$updateStats()
+    }
+    
+  }
   
-  })
+})
 
 
 
