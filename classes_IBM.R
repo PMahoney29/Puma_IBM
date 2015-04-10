@@ -216,27 +216,46 @@ popClass$methods(pullAlive = function() {
   field('indsAlive', alive)
 })
 
-  # Update population count
-popClass$methods(updateCount = function() {
-  if (field('time') == 0) field('pop.size', length(field('indsAlive')))
-  else {field('pop.size', c(field('pop.size'), length(field('indsAlive'))))}
-})
-
-  # Update time
-popClass$methods(incremTime = function() {
-  field('time', field('time') + 1)
-  
-  # age individuals
-  alive <- field("indsAlive")
-  for (i in 1:length(alive)) {
-    #alive[[i]]$age <- sum(alive[[i]]$age, 1, na.rm=T)
-    alive[[i]]$age <- alive[[i]]$age + 1
-  }  
-})
-
   # Update lambda
 
   # Update extinction
+
+# Asses stage transitions
+popClass$methods(stageAdjust = function(ageTrans) {
+  kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
+  subAdultAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='SubAdult') x)
+  
+  #kitsAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='Kitten') x)
+  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
+  #subAdultAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='SubAdult') x)
+  subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
+  
+  for (k in 1:length(kitsAlive)) {
+    kind <- kitsAlive[[k]]
+    if (kind$sex == 'F') {
+      if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+    }
+    else {
+      if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+    }
+  }
+  
+  for (sa in 1:length(subAdultAlive)) {
+    sind <- subAdultAlive[[sa]]
+    if (sind$sex == 'F') {
+      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
+        sind$socialStat = "Adult" 
+        sind$reproStat = TRUE
+      }
+    }
+    else {
+      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
+        sind$socialStat = "Adult" 
+        sind$reproStat = TRUE
+      }
+    }
+  }
+})
 
   # Check breeding status
 popClass$methods(updateBreedStat = function() {
@@ -332,42 +351,25 @@ popClass$methods(kill = function(surv) {
   .self$pullAlive()
 })
 
-  # Asses stage transitions
-popClass$methods(stageAdjust = function(ageTrans) {
-  kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
-  subAdultAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='SubAdult') x)
+# Update time
+popClass$methods(incremTime = function() {
+  field('time', field('time') + 1)
   
-  #kitsAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='Kitten') x)
-  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
-  #subAdultAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='SubAdult') x)
-  subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
-  
-  for (k in 1:length(kitsAlive)) {
-    kind <- kitsAlive[[k]]
-    if (kind$sex == 'F') {
-     if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
-    }
-    else {
-      if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
-    }
-  }
-  
-  for (sa in 1:length(subAdultAlive)) {
-    sind <- subAdultAlive[[sa]]
-    if (sind$sex == 'F') {
-      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
-        sind$socialStat = "Adult" 
-        sind$reproStat = TRUE
-      }
-    }
-    else {
-      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
-        sind$socialStat = "Adult" 
-        sind$reproStat = TRUE
-      }
-    }
-  }
+  # age individuals
+  alive <- field("indsAlive")
+  for (i in 1:length(alive)) {
+    #alive[[i]]$age <- sum(alive[[i]]$age, 1, na.rm=T)
+    alive[[i]]$age <- alive[[i]]$age + 1
+  }  
 })
+
+# Update population count
+popClass$methods(updateCount = function() {
+  if (field('time') == 0) field('pop.size', length(field('indsAlive')))
+  else {field('pop.size', c(field('pop.size'), length(field('indsAlive'))))}
+})
+
+
 
 
 
