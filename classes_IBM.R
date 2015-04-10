@@ -271,7 +271,16 @@ popClass$methods(updateBreedStat = function() {
     for (l in length(aL):1) {
       if (aL[[l]]$mother$liveStat == FALSE) {
         # kill any remaining kittens
-        invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") x$liveStat <- FALSE))
+        if (length(aL[[l]]$kittens) > 0) {
+         for (ks in 1:length(aL[[l]]$kittens)) {
+           aL[[l]]$kittens[[ks]]$liveStat <- FALSE
+           aL[[l]]$kittens[[ks]]$mortMonth <- .self$time
+         }
+        }
+        #invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") {
+        #                                                    x$liveStat <- FALSE
+        #                                                    x$mortMonth <- .self$time
+        #                                                    }))
       
         # remove litters
         aL[[l]] <- NULL
@@ -320,9 +329,7 @@ popClass$methods(reproduce = function(l2,l3,l4,probBreed,probFemaleKitt,lociName
   m_alive <- m_alive[!sapply(m_alive, is.null)]  
   
   #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
-  if (length(f_alive) == 0 | length(m_alive) == 0) next
-  
-  else {
+  if (length(f_alive) != 0 & length(m_alive) != 0) {
     for (f in length(f_alive):1) {
       if (runif(1) <= tPB) {
         # Select male mate
