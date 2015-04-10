@@ -220,7 +220,7 @@ popClass$methods(pullAlive = function() {
 
   # Update extinction
 
-# Asses stage transitions
+# Assess stage transitions
 popClass$methods(stageAdjust = function(ageTrans) {
   kitsAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='Kitten') x)
   subAdultAlive <- llply(field('indsAlive'), function(x) if (x$socialStat=='SubAdult') x)
@@ -230,28 +230,33 @@ popClass$methods(stageAdjust = function(ageTrans) {
   #subAdultAlive <- llply(pop1$indsAlive, function(x) if (x$socialStat=='SubAdult') x)
   subAdultAlive <- subAdultAlive[!sapply(subAdultAlive, is.null)]
   
-  for (k in 1:length(kitsAlive)) {
-    kind <- kitsAlive[[k]]
-    if (kind$sex == 'F') {
-      if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
-    }
-    else {
-      if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+  if (length(kitsAlive) > 0) {
+    for (k in 1:length(kitsAlive)) {
+      kind <- kitsAlive[[k]]
+      if (kind$sex == 'F') {
+        if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+      }
+      else {
+        if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+      }
     }
   }
   
-  for (sa in 1:length(subAdultAlive)) {
-    sind <- subAdultAlive[[sa]]
-    if (sind$sex == 'F') {
-      if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
-        sind$socialStat = "Adult" 
-        sind$reproStat = TRUE
+  if (length(subAdultAlive) > 0) {
+    for (sa in 1:length(subAdultAlive)) {
+      sind <- subAdultAlive[[sa]]
+      if (sind$sex == 'F') {
+        if (sind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
+          sind$socialStat = "Adult" 
+          sind$reproStat = TRUE
+        }
       }
-    }
-    else {
-      if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
-        sind$socialStat = "Adult" 
-        sind$reproStat = TRUE
+
+      else {
+        if (sind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) {
+          sind$socialStat = "Adult" 
+          sind$reproStat = TRUE
+        }
       }
     }
   }
