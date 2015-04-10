@@ -38,6 +38,26 @@ littSize <- function(l2, l3, l4) {
   o
 }
 
+# Pull genotypes for genetic analyses
+pullGenos <- function(iAlive) {
+  g <- do.call(rbind, llply(iAlive, function(x) cbind(ID = x$animID, x$genotype)))
+}
+
+createGenInput <- function(gen) {
+ gi <- gen[, -1]
+ cols <- seq(1, ncol(gi), by=2)
+
+ o <- c()
+ for (c in cols) {
+   o <- cbind(o, paste(gi[,c], gi[,c+1], sep="_"))
+ }
+ o <- as.data.frame(o)
+ names(o) <- names(gi)[cols]
+
+ #o <- cbind(o, ID = gen[,1])
+ o
+}
+
 
 #####################
 ## IBM classes
@@ -52,9 +72,16 @@ popClass <- setRefClass(
     indsAlive = 'list',
     activeLitters = 'list',
     time = 'numeric',
-    pop.size = 'numeric',
-    lambda = 'numeric',
-    extinct = 'logical'
+    pop.size = 'data.frame',
+    lambda = 'data.frame',
+    extinct = 'logical',
+    Na = 'data.frame',
+    Ne = 'data.frame',
+    PropPoly = 'data.frame',
+    He = 'data.frame',
+    Ho = 'data.frame',
+    IR = 'data.frame',
+    Fis = 'data.frame'
   ))
 
 indClass <- setRefClass(
@@ -180,6 +207,16 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols) {
   sv <- startValues
   field('extinct', FALSE)
+  field('pop.size', data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")))
+  field('Na', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('Ne', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('He', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('Ho', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('IR', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('Fis', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('lambda', data.frame(Y0 = c(0)))
+  field('PropPoly', data.frame(Y0 = c(0)))
+  
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
@@ -364,6 +401,73 @@ popClass$methods(kill = function(surv) {
   .self$pullAlive()
 })
 
+# Update population stats
+popClass$methods(updateStats = function() {
+  # pull living individuals
+  iAlive <- field('indsAlive')
+  
+  # update population size
+  op <- matrix(0, nrow = 4, ncol=1, byrow = F)
+  op[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
+  op[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
+  op[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
+  op[4,1] <- sum(op[1:3,1])
+  .self$pop.size[, paste("M", field('time'), sep="")] <- op
+  
+  # update extinction
+  if (op[4, 1] <= 1) field('extinct', TRUE)
+  else {
+    if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) field('extinct', TRUE)
+    if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) field('extinct', TRUE)
+  }
+  
+  if ((field('time')/12)%%1 == 0) {
+    # Assign year for field names
+    year <- paste("Y", field('time')/12, sep = "")
+    
+   # lambda
+    if (field('time') == 0) .self$lambda[, year] <- 1
+    else {.self$lambda[, year] <- .self$pop.size[length(field('pop.size'))] / .self$pop.size[length(field('pop.size')) - 12]}
+    #if (field('time') == 0) field('lambda', as.numeric(NA))
+    #else {field('pop.size')[length(field('pop.size'))] / field('pop.size')[length(field('pop.size')) - 12]}
+    
+    ### Genetic metrics
+    g <- pullGenos(iAlive)
+    g_genind <- df2genind(createGenInput(g), sep="_")
+    g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
+    
+    # Allelic richness Na
+    .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
+    #field('Na', cbind(field('Na'), 
+    #                  matrix(c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall))), ncol=1, nrow=2, byrow=F)))
+    
+    # Effective Ne
+    
+    # Proportion of alleles polymorphic
+    .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
+    #field('PropPoly', c(field('PropPoly'), sum(isPoly(g_genind, by=c("locus"))) / length(g_genind@loc.names)))
+    
+    # Expected heterozygosity He and Ho
+    sink('aux')
+    Hexp <- summary(g_genind)$Hexp
+    Hobs <- summary(g_genind)$Hobs
+    sink(NULL)
+    .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
+    .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
+    #field('He', c(field('He'), matrix(c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp))), ncol=1, nrow=2, byrow=F)))
+    #field('Ho', c(field('Ho'), matrix(c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs))), ncol=1, nrow=2, byrow=F)))
+    
+    # Individual heterozygosity IR
+    .self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
+    #field('IR', cbind(field('IR'), matrix(c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g))), ncol=1, nrow=2, byrow=F)))
+    
+    # Inbreeding coefficient Fis
+    Fis_ind <- sapply(inbreeding(g_genind, N=100), mean)
+    .self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
+    #field('Fis', cbind(field('Fis'), matrix(c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind))), ncol=1, nrow=2, byrow=F)))
+  }
+})
+
 # Update time
 popClass$methods(incremTime = function() {
   field('time', field('time') + 1)
@@ -375,14 +479,6 @@ popClass$methods(incremTime = function() {
     alive[[i]]$age <- alive[[i]]$age + 1
   }  
 })
-
-# Update population count
-popClass$methods(updateCount = function() {
-  if (field('time') == 0) field('pop.size', length(field('indsAlive')))
-  else {field('pop.size', c(field('pop.size'), length(field('indsAlive'))))}
-})
-
-
 
 
 
