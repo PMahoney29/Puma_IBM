@@ -266,43 +266,44 @@ popClass$methods(stageAdjust = function(ageTrans) {
 popClass$methods(updateBreedStat = function() {
   aL <- field('activeLitters')
   
-  # Adjust litters based on mortality
-  for (l in length(aL):1) {
-    if (aL[[l]]$mother$liveStat == FALSE) {
-      # kill any remaining kittens
-      invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") x$liveStat <- FALSE))
+  # Adjust litters based on mortality of mother
+  if (length(aL) > 0 ) {
+    for (l in length(aL):1) {
+      if (aL[[l]]$mother$liveStat == FALSE) {
+        # kill any remaining kittens
+        invisible(llply(aL[[l]]$kittens, function(x) if (x$socialStat == "Kitten") x$liveStat <- FALSE))
       
-      # remove litters
-      aL[[l]] <- NULL
-    }
-    
-    else {
-      # change female reproductive status after gestation
-      if (aL[[l]]$gestation >= 3) {
-        aL[[l]]$mother$reproStat <- TRUE  
+        # remove litters
         aL[[l]] <- NULL
       }
-      
+    
       else {
-        if (length(aL[[l]]$kittens) > 0) {
-          for (k in length(aL[[l]]$kittens):1) {
-            # Pulling dead kittens or dispersed kittens (SubAdults)
-            if (aL[[l]]$kittens[[k]]$liveStat == FALSE | aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
-          }
-          
-          #increment gestation
-          if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+        # change female reproductive status after gestation
+        if (aL[[l]]$gestation >= 3) {
+          aL[[l]]$mother$reproStat <- TRUE  
+          aL[[l]] <- NULL
         }
-
+      
         else {
-        #increment gestation
-        aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+          if (length(aL[[l]]$kittens) > 0) {
+            for (k in length(aL[[l]]$kittens):1) {
+              # Pulling dead kittens or dispersed kittens (SubAdults)
+              if (aL[[l]]$kittens[[k]]$liveStat == FALSE | aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
+            }
+          
+            #increment gestation
+            if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+          }
+
+          else {
+          #increment gestation
+          aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+          }
         }
       }
-    }
+      }
+    field('activeLitters', aL)
   }
-  
-  field('activeLitters', aL)
 })
 
   # Assess reproduction
