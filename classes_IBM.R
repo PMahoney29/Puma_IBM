@@ -301,13 +301,13 @@ popClass$methods(updateBreedStat = function() {
 })
 
   # Assess reproduction
-popClass$methods(reproduce = function(l2,l3,l4,probFemaleKitt,lociNames) {
+popClass$methods(reproduce = function(l2,l3,l4,probBreed,probFemaleKitt,lociNames) {
   # Generate monthly probability of breeding
   tPB <- betaval(probBreed$prob, probBreed$se)
   
   # Pull reproductive adults
-  f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F") x)
-  m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M") x)
+  f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   #f_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   #m_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   f_alive <- f_alive[!sapply(f_alive, is.null)]  
@@ -327,7 +327,7 @@ popClass$methods(reproduce = function(l2,l3,l4,probFemaleKitt,lociNames) {
       
         # Breed
         #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
-        f_alive[[f]]$femBreed(mate, numKitts, probFemaleKitt, lociNames, .self)
+        f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, .self)
       }
     }
   }
