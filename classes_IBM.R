@@ -69,16 +69,16 @@ simClass <- setRefClass(
   Class = 'simClass',
   fields = list(
     populations = 'list',
-    pop.size = 'data.frame',
+    pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'numeric',
-    Na = 'data.frame',
-    Ne = 'data.frame',
+    Na = 'list',
+    Ne = 'list',
     PropPoly = 'data.frame',
-    He = 'data.frame',
-    Ho = 'data.frame',
-    IR = 'data.frame',
-    Fis = 'data.frame'
+    He = 'list',
+    Ho = 'list',
+    IR = 'list',
+    Fis = 'list'
   ))
 
 popClass <- setRefClass(
@@ -558,8 +558,11 @@ popClass$methods(incremTime = function() {
 ##########################
 ##   simClass methods   ##
 ##########################
-
-simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, surv, ageTrans, probBreed, litterProbs, probFemaleKitt, Kf, Km) {
+simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
+                                     surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
+                                     Kf, Km, savePopulations = TRUE) {
+  field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
+  
   for (i in 1:iter) {
     # new instances of popClass
     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
@@ -577,13 +580,24 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
       popi$kill(surv)
       popi$updateStats()
+      
+      if (popi$extinct == TRUE) break
+    }
+    
+    if (savePopulations == TRUE) field("populations", list(field("populations"), list(popi)))
+    for (stage in 1:length(field('pop.size'))) {
+      .self$pop.size[[stage]] <- rbind(.self$pop.size[[stage]], popi$pop.size[stage, ])
+    }
+    
+    for (stage in 1:length(popi$pop.size)) {
+      sim1$pop.size[[stage]] <- rbind(sim1$pop.size[[stage]], popi$pop.size[stage, ])
     }
     
   }
   
 })
 
-
+sim1 <- simClass$new()
 
 
 
