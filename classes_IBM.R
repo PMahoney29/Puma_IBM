@@ -331,22 +331,25 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   
   if (length(tsubAdultFAlive) > 0) {
     allowF <- Kf - length(adultFemalesAlive)
-    
+
     if (allowF == 0) {
       invisible(llply(tsubAdultFAlive, function (x) {
        x$liveStat <- FALSE
+       #x$mortMon <- popi$time
        x$mortMon <- .self$time
       }))
     }
     else {
-      samp <- sample(1:length(tsubAdultFAlive), size = allowF)
+      sampF.size <- min(length(tsubAdultFAlive), allowF)
+      samp <- sample(1:length(tsubAdultFAlive), size = sampF.size)
       invisible(llply(tsubAdultFAlive[samp], function(x) {
         x$socialStat = 'Adult'
         x$reproStat = TRUE
       }))
       invisible(llply(tsubAdultFAlive[-samp], function(x) {
         x$liveStat = FALSE
-        x$mortMon = .self$time
+        #x$mortMon <- popi$time
+        x$mortMon <- .self$time
       }))
     }
   }
@@ -357,18 +360,21 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     if (allowM == 0) {
       invisible(llply(tsubAdultMAlive, function (x) {
         x$liveStat <- FALSE
-        x$mortMon <- .self$time
+        x$mortMon <- popi$time
+        #x$mortMon <- .self$time
       }))
     }
     else {
-      samp <- sample(1:length(tsubAdultMAlive), size = allowM)
+      sampM.size <- min(length(tsubAdultMAlive), allowM)
+      samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
       invisible(llply(tsubAdultMAlive[samp], function(x) {
         x$socialStat = 'Adult'
         x$reproStat = TRUE
       }))
       invisible(llply(tsubAdultMAlive[-samp], function(x) {
         x$liveStat = FALSE
-        x$mortMon = .self$time
+        x$mortMon <- popi$time
+        #x$mortMon <- .self$time
       }))
     }
   }
@@ -553,7 +559,7 @@ popClass$methods(incremTime = function() {
 ##   simClass methods   ##
 ##########################
 
-simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, surv, ageTrans, probBreed, litterProbs, probFemaleKitt) {
+simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, surv, ageTrans, probBreed, litterProbs, probFemaleKitt, Kf, Km) {
   for (i in 1:iter) {
     # new instances of popClass
     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
@@ -566,7 +572,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     months <- years * 12
     for (m in 1:months) {
       popi$incremTime()
-      popi$stageAdjust(ageTrans)
+      popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
       popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
       popi$kill(surv)
