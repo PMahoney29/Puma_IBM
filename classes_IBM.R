@@ -505,7 +505,9 @@ popClass$methods(updateStats = function() {
     ### Genetic metrics
     g <- pullGenos(iAlive)
     g_genind <- df2genind(createGenInput(g), sep="_")
-    sink('aux')
+    
+    if (Sys.info()[[1]] == 'Windows') sink('NUL')
+    else {sink('aux')}
     sumGind <- summary(g_genind)
     g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
     sink(NULL)
