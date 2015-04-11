@@ -299,16 +299,23 @@ popClass$methods(pullAlive = function() {
 # Assess stage transitions
 popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   iAlive <- field('indsAlive')
+  
   kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
-  subAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F') x)
-  subAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M') x)
+  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
+  
+  tsubAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F' & 
+                                                   x$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) x)
+  tsubAdultFAlive <- tsubAdultFAlive[!sapply(tsubAdultFAlive, is.null)]
+  
+  tsubAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
+                                                   x$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) x)
+  tsubAdultMAlive <- tsubAdultMAlive[!sapply(tsubAdultMAlive, is.null)]
+  
   adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
   adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
-  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
+
   adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
   adultMalesAlive <- adultFemalesAlive[!sapply(adultMalesAlive, is.null)]
-  subAdultFAlive <- subAdultFAlive[!sapply(subAdultFAlive, is.null)]
-  subAdultMAlive <- subAdultMAlive[!sapply(subAdultMAlive, is.null)]
   
   if (length(kitsAlive) > 0) {
     for (k in 1:length(kitsAlive)) {
@@ -322,51 +329,51 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     }
   }
   
-  if (length(subAdultFAlive) > 0) {
+  if (length(tsubAdultFAlive) > 0) {
     allowF <- Kf - length(adultFemalesAlive)
     
     if (allowF == 0) {
-      for (saf in 1:length(subAdultFAlive)) {
-        if (subAdultFAlive[[saf]]$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) {
-          x$liveStat = FALSE
-          x$mortMon = .self$time
-        }
-      }
+      invisible(llply(tsubAdultFAlive, function (x) {
+       x$liveStat <- FALSE
+       x$mortMon <- .self$time
+      }))
+    }
     else {
-      samp <- sample(1:length(subAdultFAlive), size = allowF)
-      invisible(llply(subAdultFAlive[samp], function(x) {
+      samp <- sample(1:length(tsubAdultFAlive), size = allowF)
+      invisible(llply(tsubAdultFAlive[samp], function(x) {
         x$socialStat = 'Adult'
         x$reproStat = TRUE
       }))
-      invisible(llply(subAdultFAlive[-samp], function(x) {
+      invisible(llply(tsubAdultFAlive[-samp], function(x) {
         x$liveStat = FALSE
         x$mortMon = .self$time
       }))
     }
   }
     
-  if (length(subAdultMAlive) > 0) {
+  if (length(tsubAdultMAlive) > 0) {
     allowM <- Km - length(adultMalesAlive)
     
     if (allowM == 0) {
-      invisible(llply(subAdultMAlive, function(x) {
-        x$liveStat = FALSE
-        x$mortMon = .self$time
+      invisible(llply(tsubAdultMAlive, function (x) {
+        x$liveStat <- FALSE
+        x$mortMon <- .self$time
       }))
     }
     else {
-      samp <- sample(1:length(subAdultMAlive), size = allowM)
-      invisible(llply(subAdultMAlive[samp], function(x) {
+      samp <- sample(1:length(tsubAdultMAlive), size = allowM)
+      invisible(llply(tsubAdultMAlive[samp], function(x) {
         x$socialStat = 'Adult'
         x$reproStat = TRUE
       }))
-      invisible(llply(subAdultMAlive[-samp], function(x) {
+      invisible(llply(tsubAdultMAlive[-samp], function(x) {
         x$liveStat = FALSE
         x$mortMon = .self$time
       }))
     }
   }
   
+  .self$pullAlive()
 })
 
   # Check breeding status
