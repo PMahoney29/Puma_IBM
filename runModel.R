@@ -35,7 +35,7 @@ Kf <- 5
 Km <- 2
 
 sim1 <- simClass$new()
-sim1$startSim(iter = 10, years = 10, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
+sim1$startSim(iter = 5, years = 25, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
               Kf = Kf, Km = Km, savePopulations = T, verbose = T)
 
