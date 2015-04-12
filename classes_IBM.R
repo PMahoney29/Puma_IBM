@@ -664,7 +664,6 @@ simClass$methods(summary = function(simObj) {
 
 simClass$methods(plot = function(fieldStat) {
   
-  
 })
 
 #sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
