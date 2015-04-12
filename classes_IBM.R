@@ -603,7 +603,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       if (popi$extinct == TRUE) break
     }
     
-    if (savePopulations == TRUE) field("populations", list(field("populations"), list(popi)))
+    if (savePopulations == TRUE) field("populations", append(field("populations"), list(popi)))
     
     for (stage in 1:length(field('pop.size'))) {
       .self$pop.size[[stage]] <- rbind.fill(.self$pop.size[[stage]], popi$pop.size[stage, ])
@@ -632,7 +632,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
   }
 })
 
-simClass$methods(summary = function(simObj) {
+simClass$methods(summary = function() {
   
   N.iter <- field('iterations')
   N.years <- field('years')
@@ -649,23 +649,61 @@ simClass$methods(summary = function(simObj) {
   }
   Mean.by.LastYear <- mean(L.by.LY)
   SE.by.LastYear <- sd(L.by.LY) / sqrt(N.iter)
-  
-  #Mean.by.year <- mean(apply(sim1$field('lambda')[, -1], 1, function(x) mean(x, na.rm=T)))
-  #SE.by.year <- sd(apply(sim1$field('lambda')[, -1], 1, function(x) mean(x, na.rm=T))) / sqrt(N.iter)
-  
+
   # Extinction prob
   Prob.extinct <- mean(field('extinct'))
   
   # Mean final population size
-  
+  ps <- field('pop.size')
+  outSize <- c()
+  for (p in 1:length(ps)) {
+    ps[[p]][is.na(ps[[p]])] <- 0
+    stage <- names(ps)[p]
+    mean <- mean(ps[[p]][, ncol(ps[[p]])])
+    se <- sd(ps[[p]][, ncol(ps[[p]])]) / sqrt(N.iter)
+    outSize <- rbind(outSize, cbind(stage, mean, se))
+  }
+  #llply(ps, function(x) c(mean(x[, ncol(x)]), sd(x[, ncol(x)]) / sqrt(N.iter)))
+
   # Mean final genetics
+  outGen <- data.frame()
+  Na <<- .self$Na$mean[, N.years + 1]
+  #Ne <<- .self$Ne$mean[, N.years + 1]
+  PropPoly <<- .self$PropPoly[, N.years + 1]
+  He <<- .self$He$mean[, N.years + 1]
+  Ho <<- .self$Ho$mean[, N.years + 1]
+  IR <<- .self$IR$mean[, N.years + 1]
+  Fis <<- .self$Fis$mean[, N.years + 1]
+
+  outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Na, na.rm = T), se = sd(Na, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Ne, na.rm = T), se = sd(Ne, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPoly, na.rm = T), se = sd(PropPoly, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "He", mean = mean(He, na.rm = T), se = sd(He, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Ho, na.rm = T), se = sd(Ho, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IR, na.rm = T), se = sd(IR, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fis, na.rm = T), se = sd(Fis, na.rm = T)))
   
+  out <- list(N.iter = N.iter, N.years = N.years,
+              Lambda = data.frame(mean = c(Mean.by.year, Mean.by.LastYear), se = c(SE.by.year, SE.by.LastYear), row.names = c("By Year", "By Last Year")),
+              ExtinctionProb = Prob.extinct,
+              Pop.size = outSize,
+              GeneticComposition = outGen
+  )
+  
+  out
 })
 
 simClass$methods(plot = function(fieldStat) {
   
 })
 
+
+ps <- field('pop.size')
+for (p in 1:length(ps)) {
+  names(ps)[p]
+  ps[[p]][is.na(ps[[p]])] <- 0
+  apply(ps[[p]], 2, mean)
+}
 #sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
 #sim1$field('Na', list(mean = c(), se = c()))
 #sim1$field('Ne', list(mean = c(), se = c()))
