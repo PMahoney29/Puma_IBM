@@ -5,6 +5,11 @@
 #  Author: Peter Mahoney, USU PhD Student
 ############################################################################
 
+### NEED TO DO:
+# FIX UNIFORMLY ZERO IN INBREEDING FUNCTION (method updateStats)
+# Generate Ne stat
+###
+
 #Load required packages
 require(methods)
 require(adegenet)
@@ -68,6 +73,8 @@ createGenInput <- function(gen) {
 simClass <- setRefClass(
   Class = 'simClass',
   fields = list(
+    iterations = 'numeric',
+    years = 'numeric',
     populations = 'list',
     pop.size = 'list',
     lambda = 'data.frame',
@@ -561,7 +568,9 @@ popClass$methods(incremTime = function() {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, savePopulations = TRUE) {
+                                     Kf, Km, savePopulations = TRUE, verbose = TRUE) {
+  field('iterations', iter)
+  field('years', years)
   
   # Set-up list structure for outputs stats
   field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
@@ -573,7 +582,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
   field('Fis', list(mean = c(), se = c()))
 
   for (i in 1:iter) {
-    print(paste('Currently on simulation:', i, sep=" "))
+    if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
     # new instances of popClass
     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
     
@@ -602,9 +611,9 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     for (stat in 1:length(field('Na'))) {
       .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
     }
-    for (stat in 1:length(field('Ne'))) {
-      .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
-    }
+    #for (stat in 1:length(field('Ne'))) {
+    #  .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
+    #}
     for (stat in 1:length(field('He'))) {
       .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
     }
@@ -623,8 +632,40 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
   }
 })
 
+simClass$methods(summary = function(simObj) {
+  
+  N.iter <- field('iterations')
+  N.years <- field('years')
+  
+  # Lambda
+  Mean.by.year <- mean(apply(field('lambda')[, -1], 1, function(x) mean(x, na.rm=T)))
+  SE.by.year <- sd(apply(field('lambda')[, -1], 1, function(x) mean(x, na.rm=T))) / sqrt(N.iter)
 
+  L.by.LY <- c()
+  for (i in 1:N.iter) {
+    iL <- field('pop.size')$TotalN[i, ]
+    iL <- iL[!is.na(iL)] 
+    L.by.LY <- c(L.by.LY, (iL[length(iL)] / iL[1]) ^ (1/(length(iL)-1)))
+  }
+  Mean.by.LastYear <- mean(L.by.LY)
+  SE.by.LastYear <- sd(L.by.LY) / sqrt(N.iter)
+  
+  #Mean.by.year <- mean(apply(sim1$field('lambda')[, -1], 1, function(x) mean(x, na.rm=T)))
+  #SE.by.year <- sd(apply(sim1$field('lambda')[, -1], 1, function(x) mean(x, na.rm=T))) / sqrt(N.iter)
+  
+  # Extinction prob
+  Prob.extinct <- mean(field('extinct'))
+  
+  # Mean final population size
+  
+  # Mean final genetics
+  
+})
 
+simClass$methods(plot = function(fieldStat) {
+  
+  
+})
 
 #sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
 #sim1$field('Na', list(mean = c(), se = c()))
