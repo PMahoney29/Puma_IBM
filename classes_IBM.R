@@ -360,8 +360,8 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     if (allowM == 0) {
       invisible(llply(tsubAdultMAlive, function (x) {
         x$liveStat <- FALSE
-        x$mortMon <- popi$time
-        #x$mortMon <- .self$time
+        #x$mortMon <- popi$time
+        x$mortMon <- .self$time
       }))
     }
     else {
@@ -373,8 +373,8 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
       }))
       invisible(llply(tsubAdultMAlive[-samp], function(x) {
         x$liveStat = FALSE
-        x$mortMon <- popi$time
-        #x$mortMon <- .self$time
+        #x$mortMon <- popi$time
+        x$mortMon <- .self$time
       }))
     }
   }
@@ -555,9 +555,10 @@ popClass$methods(incremTime = function() {
 
 
 
-##########################
-##   simClass methods   ##
-##########################
+  ##########################
+  ##   simClass methods   ##
+  ##########################
+
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
                                      Kf, Km, savePopulations = TRUE) {
@@ -570,19 +571,9 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
   field('Ho', list(mean = c(), se = c()))
   field('IR', list(mean = c(), se = c()))
   field('Fis', list(mean = c(), se = c()))
-  
-  sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
-  sim1$field('Na', list(mean = c(), se = c()))
-  sim1$field('Ne', list(mean = c(), se = c()))
-  sim1$field('He', list(mean = c(), se = c()))
-  sim1$field('Ho', list(mean = c(), se = c()))
-  sim1$field('IR', list(mean = c(), se = c()))
-  sim1$field('Fis', list(mean = c(), se = c()))
-  
-  
-  
-  
+
   for (i in 1:iter) {
+    print(paste('Currently on simulation:', i, sep=" "))
     # new instances of popClass
     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
     
@@ -629,38 +620,44 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     field('lambda', rbind.fill(field('lambda'), popi$lambda))
     field('PropPoly', rbind.fill(field('PropPoly'), popi$PropPoly))
     field('extinct', c(field('extinct'), popi$extinct))
-
-    
-    #for (stage in 1:length(sim1$pop.size)) {
-    #  sim1$pop.size[[stage]] <- rbind.fill(sim1$pop.size[[stage]], popi$pop.size[stage, ])
-    #}
-    #for (stat in 1:length(sim1$field('Na'))) {
-    #  sim1$Na[[stat]] <- rbind.fill(sim1$Na[[stat]], popi$Na[stat, ])
-    #}
-    #for (stat in 1:length(sim1$field('Ne'))) {
-    #  sim1$Ne[[stat]] <- rbind.fill(sim1$Ne[[stat]], popi$Ne[stat, ])
-    #}
-    #for (stat in 1:length(sim1$field('He'))) {
-    #  sim1$He[[stat]] <- rbind.fill(sim1$He[[stat]], popi$He[stat, ])
-    #}
-    #for (stat in 1:length(sim1$field('Ho'))) {
-    #  sim1$Ho[[stat]] <- rbind.fill(sim1$Ho[[stat]], popi$Ho[stat, ])
-    #}
-    #for (stat in 1:length(sim1$field('IR'))) {
-    #  sim1$IR[[stat]] <- rbind.fill(sim1$IR[[stat]], popi$IR[stat, ])
-    #}
-    #for (stat in 1:length(sim1$field('Fis'))) {
-    #  sim1$Fis[[stat]] <- rbind.fill(sim1$Fis[[stat]], popi$Fis[stat, ])
-    #} 
-    sim1$field('lambda', rbind.fill(sim1$field('lambda'), popi$lambda))
-    sim1$field('PropPoly', rbind.fill(sim1$field('PropPoly'), popi$PropPoly))
-    sim1$field('extinct', c(sim1$field('extinct'), popi$extinct))
   }
-  
 })
 
-sim1 <- simClass$new()
 
+
+
+#sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
+#sim1$field('Na', list(mean = c(), se = c()))
+#sim1$field('Ne', list(mean = c(), se = c()))
+#sim1$field('He', list(mean = c(), se = c()))
+#sim1$field('Ho', list(mean = c(), se = c()))
+#sim1$field('IR', list(mean = c(), se = c()))
+#sim1$field('Fis', list(mean = c(), se = c()))
+
+#for (stage in 1:length(sim1$pop.size)) {
+#  sim1$pop.size[[stage]] <- rbind.fill(sim1$pop.size[[stage]], popi$pop.size[stage, ])
+#}
+#for (stat in 1:length(sim1$field('Na'))) {
+#  sim1$Na[[stat]] <- rbind.fill(sim1$Na[[stat]], popi$Na[stat, ])
+#}
+#for (stat in 1:length(sim1$field('Ne'))) {
+#  sim1$Ne[[stat]] <- rbind.fill(sim1$Ne[[stat]], popi$Ne[stat, ])
+#}
+#for (stat in 1:length(sim1$field('He'))) {
+#  sim1$He[[stat]] <- rbind.fill(sim1$He[[stat]], popi$He[stat, ])
+#}
+#for (stat in 1:length(sim1$field('Ho'))) {
+#  sim1$Ho[[stat]] <- rbind.fill(sim1$Ho[[stat]], popi$Ho[stat, ])
+#}
+#for (stat in 1:length(sim1$field('IR'))) {
+#  sim1$IR[[stat]] <- rbind.fill(sim1$IR[[stat]], popi$IR[stat, ])
+#}
+#for (stat in 1:length(sim1$field('Fis'))) {
+#  sim1$Fis[[stat]] <- rbind.fill(sim1$Fis[[stat]], popi$Fis[stat, ])
+#} 
+#sim1$field('lambda', rbind.fill(sim1$field('lambda'), popi$lambda))
+#sim1$field('PropPoly', rbind.fill(sim1$field('PropPoly'), popi$PropPoly))
+#sim1$field('extinct', c(sim1$field('extinct'), popi$extinct))
 
 
 
