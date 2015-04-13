@@ -11,6 +11,7 @@ library(adegenet)
 library(plyr)
 library(popbio)
 library(Rhh)
+library(ggplot2)
 #library(PopGenReport)
 source('classes_IBM.R')
 
