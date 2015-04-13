@@ -753,111 +753,87 @@ simClass$methods(summary = function() {
 })
 
 simClass$methods(plot = function(fieldStat=NULL) {
-  if (fieldStat == NULL) {
-    stat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+  #if (fieldStat == NULL) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+  if (fieldStat == NULL) fieldStat <- c('pop.size', 'lambda', 'Na', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
   
-    for (p in fieldStat) {
-      
-      par(ask=T)
-      
-      if (p=='pop.size') {
-        ps <- field(p)
-        mplots <- list()
-        for (i in 1:length(ps)) {
-          psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
-          psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
-          dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
-          erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
-          assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-            labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
-            theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-                  axis.text.y=element_text(size=20),
-                  axis.title.x = element_text(size=20, vjust=-0.65),
-                  axis.title.y = element_text(size=20, vjust=1)) 
-          )
-          mplots[[i]] <- get(paste('ps_', names(ps)[[i]], sep=""))
-        }
-        multiplot(plotlist=mplots, cols = 2)
+  for (p in fieldStat) {
+    par(ask=T)
+    
+    if (p=='pop.size') {
+      ps <- field(p)
+      mplots <- list()
+      for (i in 1:length(ps)) {
+        psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
+        psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
+        dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
+        erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
+        assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+                 labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
+                 theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                       axis.text.y=element_text(size=20),
+                       axis.title.x = element_text(size=20, vjust=-0.65),
+                       axis.title.y = element_text(size=20, vjust=1)) 
+        )
+        mplots[[i]] <- get(paste('ps_', names(ps)[[i]], sep=""))
       }
-      
-      if (p=='lambda') {
-        lp <- field('lamba')
-        
-        # By Year
-        lp_mean <- apply(lp, 2, function(x) mean(x, na.rm=T))
-        lp_se <- apply(lp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
-        dat_lp <- data.frame(year = 0:(ncol(lp)-1),lp_mean, lp_se)
-        erib <- aes(ymax = lp_mean + lp_se, ymin = lp_mean - lp_se)
-        lp1 <- ggplot(dat_lp, aes(x=year, y=lp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-          labs(x="Year", y="Lambda by Year") + #ylim(c(0,20)) + 
-          theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-                axis.text.y=element_text(size=20),
-                axis.title.x = element_text(size=20, vjust=-0.65),
-                axis.title.y = element_text(size=20, vjust=1))
-        
-        # By Last Year
-        dat_lyp <- c()
-        for (i in 1:nrow(lp)) {
-          iL <- sim1$field('pop.size')$TotalN[i, ]
-          iL <- iL[!is.na(iL)] 
-          dat_lyp <- c(dat_lyp, (iL[length(iL)] / iL[1]) ^ (1/(length(iL)-1)))
-        }
-        dat_lyp <- data.frame(x = dat_lyp)
-
-        lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0006) + #xlim(c(0.7, 1.1)) +
-          aes(y = ..density..) + labs(x="Final Lambda", y="Density") +
-          theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-                axis.title.y = element_text(size = 20, vjust = 1))
-        multiplot(lp1, lp2, cols = 2)
-      }
-      
-      if (p=='PropPoly') {}
-      
-      if (p=='Na' | p=='Ne' | p=='He' | p=='Ho' | p =='IR' | p=='Fis') {}
-      
+      multiplot(plotlist=mplots, cols = 2)
     }
     
+    if (p=='lambda') {
+      lp <- field('lambda')
+      
+      # By Emp
+      lp_Empmean <- apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T))
+      dat_lp <- data.frame(x = lp_Empmean)
+      lp1 <- ggplot(data = dat_lp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0025) + #xlim(c(0.7, 1.1)) +
+        aes(y = ..density..) + labs(x="Emp Lambda", y="Density") +
+        theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+              axis.title.y = element_text(size = 20, vjust = 1))
+      
+      # By Last Year
+      lp_Stochmean <- exp(apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T)))
+      dat_lyp <- data.frame(x = lp_Stochmean)
+      lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0025) + #xlim(c(0.7, 1.1)) +
+        aes(y = ..density..) + labs(x="Stoch Lambda", y="Density") +
+        theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+              axis.title.y = element_text(size = 20, vjust = 1))
+      multiplot(lp1, lp2, cols = 1)
+    }
+    
+    if (p=='PropPoly') {
+      pp <- field('PropPoly')
+      pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
+      pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
+      dat_pp <- data.frame(year = 0:(length(pp_mean)-1), mean = pp_mean, se = pp_se)
+      erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+               labs(x="Year", y="Prop of Polymorphic Loci") + ylim(c(0,1)) + 
+               theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                     axis.text.y=element_text(size=20),
+                     axis.title.x = element_text(size=20, vjust=-0.65),
+                     axis.title.y = element_text(size=20, vjust=1)) 
+      plot(pp1)
+    }
+    
+    if (p=='Na' | p=='Ne' | p=='He' | p=='Ho' | p =='IR' | p=='Fis') {
+      fi <- field(p)$mean
+      fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
+      fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
+      dat_fi <- data.frame(year = 0:(length(fi_mean)-1), mean = fi_mean, se = fi_se)
+      erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
+      fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+        labs(x="Year", y=p) + #ylim(c(0,1)) + 
+        theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+              axis.text.y=element_text(size=20),
+              axis.title.x = element_text(size=20, vjust=-0.65),
+              axis.title.y = element_text(size=20, vjust=1)) 
+      plot(fi1)
+    }
   }
-  
 })
 
 
-## Histograms of Lambda
-lamDF <- as.data.frame(lambda)[-ncol(lambda)]
-names(lamDF) <- c("KAdultFemale = 5", "KAdultFemale = 6", "KAdultFemale = 7", "KAdultFemale = 8", "KAdultFemale = 9","KAdultFemale = 10")
-lamDF <- melt(lamDF)
 
-g <- ggplot(data = lamDF, mapping = aes(x = value)) + geom_histogram(binwidth=0.0065) + facet_wrap(~variable, nrow=6) +
-  xlim(c(0.7, 1.1))
-g + aes(y = ..density..) + labs(x="Lambda", y="Density") +
-  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-        axis.title.y = element_text(size = 20, vjust = 1))
-
-g <- ggplot(data = lamDF, mapping = aes(x = value)) + geom_density(fill='grey') + facet_wrap(~variable, nrow=6) +
-  xlim(c(0.7, 1.1))
-g + labs(x="Lambda", y = "Density") +
-  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-        axis.title.y = element_text(size = 20, vjust = 1))
-
-ggplot(lamDF, aes(x=value, fill = variable)) +
-  geom_density(alpha = 0.2) + xlim(c(0.7, 1.1)) + labs(x="Lambda", y="Density") +
-  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-        axis.title.y = element_text(size = 20, vjust = 1))
-
-##GGPLOT code
-out5 <- data.frame(x=1:tmax)
-for (r in 1:50) {
-  out5[,paste('Proj',r, sep="")] <- Ns.list[[1]][r,]
-}
-
-out <- melt(out5, id='x')
-
-g <- ggplot(out, aes(x,value, group=variable)) + geom_line(color="black") #+ geom_point(color="black")      ##Plots the first 50 reps for each K
-g <- g + theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-               axis.text.y=element_text(size=20),
-               axis.title.x = element_text(size=25, vjust=-0.35),
-               axis.title.y = element_text(size=25, vjust=0.35)) +
-  labs(x="Year", y="Female Population Size") + ylim(c(0,20))
 
 
 
