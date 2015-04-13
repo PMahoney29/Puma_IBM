@@ -64,6 +64,52 @@ createGenInput <- function(gen) {
  o
 }
 
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
 
 #####################
 ## IBM classes
@@ -697,16 +743,66 @@ simClass$methods(summary = function() {
 
 simClass$methods(plot = function(fieldStat=NULL) {
   if (fieldStat == NULL) {
-    stat <- c('pop.size', 'lambda', 'extinct', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+    stat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
   
     for (p in fieldStat) {
+      
       par(ask=T)
+      
       if (p=='pop.size') {
-        for (i in 1:length(t)) {}
-        
-        multiplot(p1, p2, p3, p4, cols=2)
+        ps <- field(p)
+        mplots <- list()
+        for (i in 1:length(ps)) {
+          psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
+          psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
+          dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
+          erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
+          assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+            labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
+            theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                  axis.text.y=element_text(size=20),
+                  axis.title.x = element_text(size=20, vjust=-0.65),
+                  axis.title.y = element_text(size=20, vjust=1)) 
+          )
+          mplots[[i]] <- get(paste('ps_', names(ps)[[i]], sep=""))
+        }
+        multiplot(plotlist=mplots, cols = 2)
       }
       
+      if (p=='lambda') {
+        lp <- field('lamba')
+        
+        # By Year
+        lp_mean <- apply(lp, 2, function(x) mean(x, na.rm=T))
+        lp_se <- apply(lp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
+        dat_lp <- data.frame(year = 0:(ncol(lp)-1),lp_mean, lp_se)
+        erib <- aes(ymax = lp_mean + lp_se, ymin = lp_mean - lp_se)
+        lp1 <- ggplot(dat_lp, aes(x=year, y=lp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+          labs(x="Year", y="Lambda by Year") + #ylim(c(0,20)) + 
+          theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                axis.text.y=element_text(size=20),
+                axis.title.x = element_text(size=20, vjust=-0.65),
+                axis.title.y = element_text(size=20, vjust=1))
+        
+        # By Last Year
+        dat_lyp <- c()
+        for (i in 1:nrow(lp)) {
+          iL <- sim1$field('pop.size')$TotalN[i, ]
+          iL <- iL[!is.na(iL)] 
+          dat_lyp <- c(dat_lyp, (iL[length(iL)] / iL[1]) ^ (1/(length(iL)-1)))
+        }
+        dat_lyp <- data.frame(x = dat_lyp)
+
+        lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0006) + #xlim(c(0.7, 1.1)) +
+          aes(y = ..density..) + labs(x="Final Lambda", y="Density") +
+          theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+                axis.title.y = element_text(size = 20, vjust = 1))
+        multiplot(lp1, lp2, cols = 2)
+      }
+      
+      if (p=='PropPoly') {}
+      
+      if (p=='Na' | p=='Ne' | p=='He' | p=='Ho' | p =='IR' | p=='Fis') {}
       
     }
     
@@ -714,28 +810,6 @@ simClass$methods(plot = function(fieldStat=NULL) {
   
 })
 
-
-## Simple xyplots for TotalN
-dat <- read.csv("OutputNbyK_CorrSurv_CalPuma1_long.csv")
-dat$K <- factor(dat$K, levels = c("K = 5", "K = 6", "K = 7", "K = 8", "K = 9", "K = 10"))
-
-erib <- aes(ymax = mean + sd, ymin = mean - sd)
-g <- ggplot(dat, aes(x=Year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) + facet_wrap(~K, ncol=6)
-g + labs(x="Year", y="Female Population Size") + ylim(c(0,20)) + 
-  theme(axis.title.x = element_text(size=20, vjust=-0.65),
-        axis.title.y = element_text(size=20, vjust=1)) 
-
-
-## XYplots for N by stage
-dat <- read.csv("OutputNbyStage_CorrSurv_CalPuma1_long.csv")
-dat$K <- factor(dat$K, levels = c("KAdultFemale = 5", "KAdultFemale = 6", "KAdultFemale = 7", "KAdultFemale = 8", "KAdultFemale = 9","KAdultFemale = 10" ))
-dat$Stage <- factor(dat$Stage, levels = c("Kitten", "SA", "Adult"))
-
-erib <- aes(ymax = mean + sd, ymin = mean - sd)
-g <- ggplot(dat, aes(x=Year, y=mean, group=Stage, color=Stage, fill=Stage)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5,size = 1.05) + facet_wrap(~K, ncol=6)
-g + labs(x="Year", y = "Female Population Size", ylim(c(0,10))) +
-  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-        axis.title.y = element_text(size = 20, vjust = 1))
 
 ## Histograms of Lambda
 lamDF <- as.data.frame(lambda)[-ncol(lambda)]
