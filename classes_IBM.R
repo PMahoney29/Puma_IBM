@@ -48,7 +48,6 @@ littSize <- function(l2, l3, l4) {
 pullGenos <- function(iAlive) {
   g <- do.call(rbind, llply(iAlive, function(x) cbind(ID = x$animID, x$genotype)))
 }
-
 createGenInput <- function(gen) {
  gi <- gen[, -1]
  cols <- seq(1, ncol(gi), by=2)
@@ -62,6 +61,21 @@ createGenInput <- function(gen) {
 
  #o <- cbind(o, ID = gen[,1])
  o
+}
+
+# Calculate geometric mean
+gm_mean = function(x, na.rm=TRUE, zero.propagate = FALSE){
+  if(any(x < 0, na.rm = TRUE)){
+    return(NaN)
+  }
+  if(zero.propagate){
+    if(any(x == 0, na.rm = TRUE)){
+      return(0)
+    }
+    exp(mean(log(x), na.rm = na.rm))
+  } else {
+    exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+  }
 }
 
 # Multiple plot function
@@ -686,17 +700,11 @@ simClass$methods(summary = function() {
   N.years <- field('years')
   
   # Lambda
-  Mean.by.year <- mean(apply(field('lambda')[, -1], 1, function(x) mean(x, na.rm=T)))
-  SE.by.year <- sd(apply(field('lambda')[, -1], 1, function(x) mean(x, na.rm=T))) / sqrt(N.iter)
+  EmpLambda_mean <- mean(apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T)))
+  EmpLambda_se <- sd(apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T))) / sqrt(N.iter)
 
-  L.by.LY <- c()
-  for (i in 1:N.iter) {
-    iL <- field('pop.size')$TotalN[i, ]
-    iL <- iL[!is.na(iL)] 
-    L.by.LY <- c(L.by.LY, (iL[length(iL)] / iL[1]) ^ (1/(length(iL)-1)))
-  }
-  Mean.by.LastYear <- mean(L.by.LY)
-  SE.by.LastYear <- sd(L.by.LY) / sqrt(N.iter)
+  StochLogLambda_mean <- mean(apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T)))
+  StochLogLambda_se <- sd(apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T))) / sqrt(N.iter)
 
   # Extinction prob
   Prob.extinct <- mean(field('extinct'))
@@ -732,7 +740,10 @@ simClass$methods(summary = function() {
   outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fisi, na.rm = T), se = sd(Fisi, na.rm = T)))
   
   out <- list(N.iter = N.iter, N.years = N.years,
-              Lambda = data.frame(mean = c(Mean.by.year, Mean.by.LastYear), se = c(SE.by.year, SE.by.LastYear), row.names = c("By Year", "By Last Year")),
+              Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
+                                  l95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)), 
+                                  u95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)),
+                                  row.names = c("Empirical Lambda", "Stochastic Lambda")),
               ExtinctionProb = Prob.extinct,
               Pop.size = outSize,
               GeneticComposition = outGen
