@@ -16,6 +16,7 @@ require(adegenet)
 require(plyr)
 require(popbio)
 require(Rhh)
+require(ggplot2)
 
 
 ###########################
@@ -694,49 +695,84 @@ simClass$methods(summary = function() {
   out
 })
 
-simClass$methods(plot = function(fieldStat) {
+simClass$methods(plot = function(fieldStat=NULL) {
+  if (fieldStat == NULL) {
+    stat <- c('pop.size', 'lambda', 'extinct', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+  
+    for (p in fieldStat) {
+      par(ask=T)
+      if (p=='pop.size') {
+        for (i in 1:length(t)) {}
+        
+        multiplot(p1, p2, p3, p4, cols=2)
+      }
+      
+      
+    }
+    
+  }
   
 })
 
 
-#ps <- field('pop.size')
-#for (p in 1:length(ps)) {
-#  names(ps)[p]
-#  ps[[p]][is.na(ps[[p]])] <- 0
-#  apply(ps[[p]], 2, mean)
-#}
-#sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
-#sim1$field('Na', list(mean = c(), se = c()))
-#sim1$field('Ne', list(mean = c(), se = c()))
-#sim1$field('He', list(mean = c(), se = c()))
-#sim1$field('Ho', list(mean = c(), se = c()))
-#sim1$field('IR', list(mean = c(), se = c()))
-#sim1$field('Fis', list(mean = c(), se = c()))
+## Simple xyplots for TotalN
+dat <- read.csv("OutputNbyK_CorrSurv_CalPuma1_long.csv")
+dat$K <- factor(dat$K, levels = c("K = 5", "K = 6", "K = 7", "K = 8", "K = 9", "K = 10"))
 
-#for (stage in 1:length(sim1$pop.size)) {
-#  sim1$pop.size[[stage]] <- rbind.fill(sim1$pop.size[[stage]], popi$pop.size[stage, ])
-#}
-#for (stat in 1:length(sim1$field('Na'))) {
-#  sim1$Na[[stat]] <- rbind.fill(sim1$Na[[stat]], popi$Na[stat, ])
-#}
-#for (stat in 1:length(sim1$field('Ne'))) {
-#  sim1$Ne[[stat]] <- rbind.fill(sim1$Ne[[stat]], popi$Ne[stat, ])
-#}
-#for (stat in 1:length(sim1$field('He'))) {
-#  sim1$He[[stat]] <- rbind.fill(sim1$He[[stat]], popi$He[stat, ])
-#}
-#for (stat in 1:length(sim1$field('Ho'))) {
-#  sim1$Ho[[stat]] <- rbind.fill(sim1$Ho[[stat]], popi$Ho[stat, ])
-#}
-#for (stat in 1:length(sim1$field('IR'))) {
-#  sim1$IR[[stat]] <- rbind.fill(sim1$IR[[stat]], popi$IR[stat, ])
-#}
-#for (stat in 1:length(sim1$field('Fis'))) {
-#  sim1$Fis[[stat]] <- rbind.fill(sim1$Fis[[stat]], popi$Fis[stat, ])
-#} 
-#sim1$field('lambda', rbind.fill(sim1$field('lambda'), popi$lambda))
-#sim1$field('PropPoly', rbind.fill(sim1$field('PropPoly'), popi$PropPoly))
-#sim1$field('extinct', c(sim1$field('extinct'), popi$extinct))
+erib <- aes(ymax = mean + sd, ymin = mean - sd)
+g <- ggplot(dat, aes(x=Year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) + facet_wrap(~K, ncol=6)
+g + labs(x="Year", y="Female Population Size") + ylim(c(0,20)) + 
+  theme(axis.title.x = element_text(size=20, vjust=-0.65),
+        axis.title.y = element_text(size=20, vjust=1)) 
+
+
+## XYplots for N by stage
+dat <- read.csv("OutputNbyStage_CorrSurv_CalPuma1_long.csv")
+dat$K <- factor(dat$K, levels = c("KAdultFemale = 5", "KAdultFemale = 6", "KAdultFemale = 7", "KAdultFemale = 8", "KAdultFemale = 9","KAdultFemale = 10" ))
+dat$Stage <- factor(dat$Stage, levels = c("Kitten", "SA", "Adult"))
+
+erib <- aes(ymax = mean + sd, ymin = mean - sd)
+g <- ggplot(dat, aes(x=Year, y=mean, group=Stage, color=Stage, fill=Stage)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5,size = 1.05) + facet_wrap(~K, ncol=6)
+g + labs(x="Year", y = "Female Population Size", ylim(c(0,10))) +
+  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+        axis.title.y = element_text(size = 20, vjust = 1))
+
+## Histograms of Lambda
+lamDF <- as.data.frame(lambda)[-ncol(lambda)]
+names(lamDF) <- c("KAdultFemale = 5", "KAdultFemale = 6", "KAdultFemale = 7", "KAdultFemale = 8", "KAdultFemale = 9","KAdultFemale = 10")
+lamDF <- melt(lamDF)
+
+g <- ggplot(data = lamDF, mapping = aes(x = value)) + geom_histogram(binwidth=0.0065) + facet_wrap(~variable, nrow=6) +
+  xlim(c(0.7, 1.1))
+g + aes(y = ..density..) + labs(x="Lambda", y="Density") +
+  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+        axis.title.y = element_text(size = 20, vjust = 1))
+
+g <- ggplot(data = lamDF, mapping = aes(x = value)) + geom_density(fill='grey') + facet_wrap(~variable, nrow=6) +
+  xlim(c(0.7, 1.1))
+g + labs(x="Lambda", y = "Density") +
+  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+        axis.title.y = element_text(size = 20, vjust = 1))
+
+ggplot(lamDF, aes(x=value, fill = variable)) +
+  geom_density(alpha = 0.2) + xlim(c(0.7, 1.1)) + labs(x="Lambda", y="Density") +
+  theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+        axis.title.y = element_text(size = 20, vjust = 1))
+
+##GGPLOT code
+out5 <- data.frame(x=1:tmax)
+for (r in 1:50) {
+  out5[,paste('Proj',r, sep="")] <- Ns.list[[1]][r,]
+}
+
+out <- melt(out5, id='x')
+
+g <- ggplot(out, aes(x,value, group=variable)) + geom_line(color="black") #+ geom_point(color="black")      ##Plots the first 50 reps for each K
+g <- g + theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+               axis.text.y=element_text(size=20),
+               axis.title.x = element_text(size=25, vjust=-0.35),
+               axis.title.y = element_text(size=25, vjust=0.35)) +
+  labs(x="Year", y="Female Population Size") + ylim(c(0,20))
 
 
 
