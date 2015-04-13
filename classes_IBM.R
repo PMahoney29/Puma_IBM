@@ -752,15 +752,15 @@ simClass$methods(summary = function() {
   out
 })
 
-simClass$methods(plot = function(fieldStat=NULL) {
-  #if (fieldStat == NULL) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
-  if (fieldStat == NULL) fieldStat <- c('pop.size', 'lambda', 'Na', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+simClass$methods(plot = function(fieldStat) {
+  #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'He', 'Ho', 'IR', 'Fis', 'lambda')
   
-  for (p in fieldStat) {
-    par(ask=T)
+  for (p in 1:length(fieldStat)) {
+    par(ask=TRUE)
     
-    if (p=='pop.size') {
-      ps <- field(p)
+    if (fieldStat[p]=='pop.size') {
+      ps <- field(fieldStat[p])
       mplots <- list()
       for (i in 1:length(ps)) {
         psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
@@ -779,61 +779,57 @@ simClass$methods(plot = function(fieldStat=NULL) {
       multiplot(plotlist=mplots, cols = 2)
     }
     
-    if (p=='lambda') {
-      lp <- field('lambda')
-      
+    if (fieldStat[p]=='lambda') {
       # By Emp
       lp_Empmean <- apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T))
       dat_lp <- data.frame(x = lp_Empmean)
-      lp1 <- ggplot(data = dat_lp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0025) + #xlim(c(0.7, 1.1)) +
+      lp1 <- ggplot(data = dat_lp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
         aes(y = ..density..) + labs(x="Emp Lambda", y="Density") +
         theme(axis.title.x = element_text(size = 20, vjust = -0.65),
               axis.title.y = element_text(size = 20, vjust = 1))
-      
-      # By Last Year
+    
+    # By Last Year
       lp_Stochmean <- exp(apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T)))
       dat_lyp <- data.frame(x = lp_Stochmean)
-      lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth=0.0025) + #xlim(c(0.7, 1.1)) +
+      lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
         aes(y = ..density..) + labs(x="Stoch Lambda", y="Density") +
         theme(axis.title.x = element_text(size = 20, vjust = -0.65),
               axis.title.y = element_text(size = 20, vjust = 1))
       multiplot(lp1, lp2, cols = 1)
+      #par(ask=T) 
     }
-    
-    if (p=='PropPoly') {
+   
+    if (fieldStat[p]=='PropPoly') {
       pp <- field('PropPoly')
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
       pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
       dat_pp <- data.frame(year = 0:(length(pp_mean)-1), mean = pp_mean, se = pp_se)
-      erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
-      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+      erib <- aes(ymax = mean + se, ymin = mean - se)
+      pp1 <- ggplot(dat_pp, aes(x=year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
                labs(x="Year", y="Prop of Polymorphic Loci") + ylim(c(0,1)) + 
                theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
                      axis.text.y=element_text(size=20),
                      axis.title.x = element_text(size=20, vjust=-0.65),
                      axis.title.y = element_text(size=20, vjust=1)) 
-      plot(pp1)
+      multiplot(pp1, cols=1)
     }
     
-    if (p=='Na' | p=='Ne' | p=='He' | p=='Ho' | p =='IR' | p=='Fis') {
-      fi <- field(p)$mean
+    if (fieldStat[p]=='Na' | fieldStat[p]=='Ne' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
+      fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
       fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
       dat_fi <- data.frame(year = 0:(length(fi_mean)-1), mean = fi_mean, se = fi_se)
-      erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
-      fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-        labs(x="Year", y=p) + #ylim(c(0,1)) + 
+      erib <- aes(ymax = mean + se, ymin = mean - se)
+      fi1 <- ggplot(dat_fi, aes(x=year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+        labs(x="Year", y=fieldStat[p]) + #ylim(c(0,1)) + 
         theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
               axis.text.y=element_text(size=20),
               axis.title.x = element_text(size=20, vjust=-0.65),
               axis.title.y = element_text(size=20, vjust=1)) 
       plot(fi1)
     }
+
   }
 })
-
-
-
-
 
 
