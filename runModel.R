@@ -19,10 +19,6 @@ startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFa
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
 genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 
-#pop1 <- popClass$new(popID = 'Population_1', time=0)
-#pop1$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-#              socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
-
 surv <- read.csv('./Data/survival//survivalMonthly.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
@@ -38,5 +34,7 @@ sim1 <- simClass$new()
 sim1$startSim(iter = 5, years = 25, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
               Kf = Kf, Km = Km, savePopulations = T, verbose = T)
+
+sim1$summary()
 
 
