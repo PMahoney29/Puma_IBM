@@ -826,7 +826,7 @@ simClass$methods(plot = function(fieldStat) {
               axis.text.y=element_text(size=20),
               axis.title.x = element_text(size=20, vjust=-0.65),
               axis.title.y = element_text(size=20, vjust=1)) 
-      multiplot(fi1, col=1)
+      multiplot(fi1, cols=1)
     }
 
   }
