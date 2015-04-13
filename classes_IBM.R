@@ -583,6 +583,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
 
   for (i in 1:iter) {
     if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
+    
     # new instances of popClass
     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
     
@@ -655,7 +656,7 @@ simClass$methods(summary = function() {
   
   # Mean final population size
   ps <- field('pop.size')
-  outSize <- c()
+  outSize <- data.frame()
   for (p in 1:length(ps)) {
     ps[[p]][is.na(ps[[p]])] <- 0
     stage <- names(ps)[p]
@@ -667,21 +668,21 @@ simClass$methods(summary = function() {
 
   # Mean final genetics
   outGen <- data.frame()
-  Na <<- .self$Na$mean[, N.years + 1]
-  #Ne <<- .self$Ne$mean[, N.years + 1]
-  PropPoly <<- .self$PropPoly[, N.years + 1]
-  He <<- .self$He$mean[, N.years + 1]
-  Ho <<- .self$Ho$mean[, N.years + 1]
-  IR <<- .self$IR$mean[, N.years + 1]
-  Fis <<- .self$Fis$mean[, N.years + 1]
+  Nai <- .self$Na$mean[, N.years + 1]
+  #Nei <- .self$Ne$mean[, N.years + 1]
+  PropPolyi <- .self$PropPoly[, N.years + 1]
+  Hei <- .self$He$mean[, N.years + 1]
+  Hoi <- .self$Ho$mean[, N.years + 1]
+  IRi <- .self$IR$mean[, N.years + 1]
+  Fisi <- .self$Fis$mean[, N.years + 1]
 
-  outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Na, na.rm = T), se = sd(Na, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Ne, na.rm = T), se = sd(Ne, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPoly, na.rm = T), se = sd(PropPoly, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "He", mean = mean(He, na.rm = T), se = sd(He, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Ho, na.rm = T), se = sd(Ho, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IR, na.rm = T), se = sd(IR, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fis, na.rm = T), se = sd(Fis, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Nai, na.rm = T), se = sd(Nai, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPolyi, na.rm = T), se = sd(PropPolyi, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "He", mean = mean(Hei, na.rm = T), se = sd(Hei, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Hoi, na.rm = T), se = sd(Hoi, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IRi, na.rm = T), se = sd(IRi, na.rm = T)))
+  outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fisi, na.rm = T), se = sd(Fisi, na.rm = T)))
   
   out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(Mean.by.year, Mean.by.LastYear), se = c(SE.by.year, SE.by.LastYear), row.names = c("By Year", "By Last Year")),
@@ -698,12 +699,12 @@ simClass$methods(plot = function(fieldStat) {
 })
 
 
-ps <- field('pop.size')
-for (p in 1:length(ps)) {
-  names(ps)[p]
-  ps[[p]][is.na(ps[[p]])] <- 0
-  apply(ps[[p]], 2, mean)
-}
+#ps <- field('pop.size')
+#for (p in 1:length(ps)) {
+#  names(ps)[p]
+#  ps[[p]][is.na(ps[[p]])] <- 0
+#  apply(ps[[p]], 2, mean)
+#}
 #sim1$field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
 #sim1$field('Na', list(mean = c(), se = c()))
 #sim1$field('Ne', list(mean = c(), se = c()))
