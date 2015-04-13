@@ -769,10 +769,10 @@ simClass$methods(plot = function(fieldStat) {
         erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
         assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
                  labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
-                 theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-                       axis.text.y=element_text(size=20),
-                       axis.title.x = element_text(size=20, vjust=-0.65),
-                       axis.title.y = element_text(size=20, vjust=1)) 
+                 theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
+                       axis.text.y=element_text(size=10),
+                       axis.title.x = element_text(size=10, vjust=-0.65),
+                       axis.title.y = element_text(size=10, vjust=1)) 
         )
         mplots[[i]] <- get(paste('ps_', names(ps)[[i]], sep=""))
       }
@@ -800,12 +800,12 @@ simClass$methods(plot = function(fieldStat) {
     }
    
     if (fieldStat[p]=='PropPoly') {
-      pp <- field('PropPoly')
+      pp <- sim1$field('PropPoly')
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
       pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
-      dat_pp <- data.frame(year = 0:(length(pp_mean)-1), mean = pp_mean, se = pp_se)
-      erib <- aes(ymax = mean + se, ymin = mean - se)
-      pp1 <- ggplot(dat_pp, aes(x=year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+      dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
+      erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
                labs(x="Year", y="Prop of Polymorphic Loci") + ylim(c(0,1)) + 
                theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
                      axis.text.y=element_text(size=20),
@@ -818,15 +818,15 @@ simClass$methods(plot = function(fieldStat) {
       fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
       fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
-      dat_fi <- data.frame(year = 0:(length(fi_mean)-1), mean = fi_mean, se = fi_se)
-      erib <- aes(ymax = mean + se, ymin = mean - se)
-      fi1 <- ggplot(dat_fi, aes(x=year, y=mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+      dat_fi <- data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_se = fi_se)
+      erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
+      fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
         labs(x="Year", y=fieldStat[p]) + #ylim(c(0,1)) + 
         theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
               axis.text.y=element_text(size=20),
               axis.title.x = element_text(size=20, vjust=-0.65),
               axis.title.y = element_text(size=20, vjust=1)) 
-      plot(fi1)
+      multiplot(fi1, col=1)
     }
 
   }
