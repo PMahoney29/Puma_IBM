@@ -730,33 +730,44 @@ simClass$methods(summary = function() {
   }
   #llply(ps, function(x) c(mean(x[, ncol(x)]), sd(x[, ncol(x)]) / sqrt(N.iter)))
 
-  # Mean final genetics
-  outGen <- data.frame()
-  Nai <- .self$Na$mean[, N.years + 1]
-  #Nei <- .self$Ne$mean[, N.years + 1]
-  PropPolyi <- .self$PropPoly[, N.years + 1]
-  Hei <- .self$He$mean[, N.years + 1]
-  Hoi <- .self$Ho$mean[, N.years + 1]
-  IRi <- .self$IR$mean[, N.years + 1]
-  Fisi <- .self$Fis$mean[, N.years + 1]
+  if (!is.null(.self$Na$mean)) {
+    # Mean final genetics
+    outGen <- data.frame()
+    Nai <- .self$Na$mean[, N.years + 1]
+    #Nei <- .self$Ne$mean[, N.years + 1]
+    PropPolyi <- .self$PropPoly[, N.years + 1]
+    Hei <- .self$He$mean[, N.years + 1]
+    Hoi <- .self$Ho$mean[, N.years + 1]
+    IRi <- .self$IR$mean[, N.years + 1]
+    Fisi <- .self$Fis$mean[, N.years + 1]
 
-  outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Nai, na.rm = T), se = sd(Nai, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPolyi, na.rm = T), se = sd(PropPolyi, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "He", mean = mean(Hei, na.rm = T), se = sd(Hei, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Hoi, na.rm = T), se = sd(Hoi, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IRi, na.rm = T), se = sd(IRi, na.rm = T)))
-  outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fisi, na.rm = T), se = sd(Fisi, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Nai, na.rm = T), se = sd(Nai, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPolyi, na.rm = T), se = sd(PropPolyi, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "He", mean = mean(Hei, na.rm = T), se = sd(Hei, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Hoi, na.rm = T), se = sd(Hoi, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IRi, na.rm = T), se = sd(IRi, na.rm = T)))
+    outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fisi, na.rm = T), se = sd(Fisi, na.rm = T)))
   
-  out <- list(N.iter = N.iter, N.years = N.years,
+    out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                   l95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)), 
                                   u95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)),
                                   row.names = c("Empirical Lambda", "Stochastic Lambda")),
               ExtinctionProb = Prob.extinct,
               Pop.size = outSize,
-              GeneticComposition = outGen
-  )
+              GeneticComposition = outGen)
+  }
+  else {
+    out <- list(N.iter = N.iter, N.years = N.years,
+                Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
+                                    l95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)), 
+                                    u95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)),
+                                    row.names = c("Empirical Lambda", "Stochastic Lambda")),
+                ExtinctionProb = Prob.extinct,
+                Pop.size = outSize,
+                GeneticComposition = "No genetic output generated")    
+  }
   
   out
 })
