@@ -751,8 +751,8 @@ simClass$methods(summary = function() {
   
     out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
-                                  l95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)), 
-                                  u95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)),
+                                  l95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
+                                  u95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
                                   row.names = c("Empirical Lambda", "Stochastic Lambda")),
               ExtinctionProb = Prob.extinct,
               Pop.size = outSize,
@@ -761,8 +761,8 @@ simClass$methods(summary = function() {
   else {
     out <- list(N.iter = N.iter, N.years = N.years,
                 Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
-                                    l95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)), 
-                                    u95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)),
+                                    l95 = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
+                                    u95 = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
                                     row.names = c("Empirical Lambda", "Stochastic Lambda")),
                 ExtinctionProb = Prob.extinct,
                 Pop.size = outSize,
