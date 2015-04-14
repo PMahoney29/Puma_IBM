@@ -289,7 +289,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 ##   popClass methods   ##
 ##########################
 
-popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols) {
+popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols, genOutput) {
   sv <- startValues
   field('extinct', FALSE)
   field('pop.size', data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")))
@@ -334,7 +334,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   .self$activeLitters <- aLit
   
   # Update stats
-  .self$updateStats()
+  .self$updateStats(genOutput)
 })
 
   # View individual data (tabulated ~ data.frame)
@@ -549,7 +549,7 @@ popClass$methods(kill = function(surv) {
 })
 
 # Update population stats
-popClass$methods(updateStats = function() {
+popClass$methods(updateStats = function(genOutput) {
   # pull living individuals
   iAlive <- field('indsAlive')
   
@@ -576,36 +576,38 @@ popClass$methods(updateStats = function() {
     if (field('time') == 0) .self$lambda[, year] <- 1
     else {.self$lambda[, year] <- .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size'))] / .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size')) - 12]}
     
-    ### Genetic metrics
-    g <- pullGenos(iAlive)
-    g_genind <- df2genind(createGenInput(g), sep="_")
+    if (genOutput) {
+      ### Genetic metrics
+      g <- pullGenos(iAlive)
+      g_genind <- df2genind(createGenInput(g), sep="_")
     
-    if (Sys.info()[[1]] == 'Windows') sink('NUL')
-    else {sink('aux')}
-    sumGind <- summary(g_genind)
-    g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
-    sink(NULL)
+      if (Sys.info()[[1]] == 'Windows') sink('NUL')
+      else {sink('aux')}
+      sumGind <- summary(g_genind)
+      g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
+      sink(NULL)
     
-    # Allelic richness Na
-    .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
+      # Allelic richness Na
+      .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
     
-    # Effective Ne
+      # Effective Ne
     
-    # Proportion of alleles polymorphic
-    .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
+      # Proportion of alleles polymorphic
+      .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
     
-    # Expected heterozygosity He and Ho
-    Hexp <- sumGind$Hexp
-    Hobs <- sumGind$Hobs
-    .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
-    .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
+      # Expected heterozygosity He and Ho
+      Hexp <- sumGind$Hexp
+      Hobs <- sumGind$Hobs
+      .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
+      .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
     
-    # Individual heterozygosity IR
-    .self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
+      # Individual heterozygosity IR
+      .self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
     
-    # Inbreeding coefficient Fis
-    Fis_ind <- sapply(inbreeding(g_genind, N=100), mean)
-    .self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
+      # Inbreeding coefficient Fis
+      Fis_ind <- sapply(inbreeding(g_genind, N=50), mean)
+      .self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
+    }
   }
 })
 
@@ -629,7 +631,7 @@ popClass$methods(incremTime = function() {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, savePopulations = TRUE, verbose = TRUE) {
+                                     Kf, Km, genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   field('iterations', iter)
   field('years', years)
   
@@ -650,17 +652,18 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     
     # fill with starting values
     popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols)
+                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput)
     
     # simulate population
     months <- years * 12
     for (m in 1:months) {
+      popi$kill(surv)
       popi$incremTime()
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
       popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
-      popi$kill(surv)
-      popi$updateStats()
+      #popi$kill(surv)
+      popi$updateStats(genOutput)
       
       if (popi$extinct == TRUE) break
     }
@@ -670,26 +673,28 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     for (stage in 1:length(field('pop.size'))) {
       .self$pop.size[[stage]] <- rbind.fill(.self$pop.size[[stage]], popi$pop.size[stage, ])
     }
-    for (stat in 1:length(field('Na'))) {
-      .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
-    }
-    #for (stat in 1:length(field('Ne'))) {
-    #  .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
-    #}
-    for (stat in 1:length(field('He'))) {
-      .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
-    }
-    for (stat in 1:length(field('Ho'))) {
-      .self$Ho[[stat]] <- rbind.fill(.self$Ho[[stat]], popi$Ho[stat, ])
-    }
-    for (stat in 1:length(field('IR'))) {
-      .self$IR[[stat]] <- rbind.fill(.self$IR[[stat]], popi$IR[stat, ])
-    }
-    for (stat in 1:length(field('Fis'))) {
-      .self$Fis[[stat]] <- rbind.fill(.self$Fis[[stat]], popi$Fis[stat, ])
+   if (genOutput) {
+      for (stat in 1:length(field('Na'))) {
+        .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
+      }
+      #for (stat in 1:length(field('Ne'))) {
+    #   .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
+      #}
+      for (stat in 1:length(field('He'))) {
+        .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
+      }
+      for (stat in 1:length(field('Ho'))) {
+        .self$Ho[[stat]] <- rbind.fill(.self$Ho[[stat]], popi$Ho[stat, ])
+      }
+      for (stat in 1:length(field('IR'))) {
+        .self$IR[[stat]] <- rbind.fill(.self$IR[[stat]], popi$IR[stat, ])
+      }
+      for (stat in 1:length(field('Fis'))) {
+        .self$Fis[[stat]] <- rbind.fill(.self$Fis[[stat]], popi$Fis[stat, ])
+      }
+      field('PropPoly', rbind.fill(field('PropPoly'), popi$PropPoly))
     }
     field('lambda', rbind.fill(field('lambda'), popi$lambda))
-    field('PropPoly', rbind.fill(field('PropPoly'), popi$PropPoly))
     field('extinct', c(field('extinct'), popi$extinct))
   }
 })
