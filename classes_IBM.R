@@ -136,7 +136,7 @@ simClass <- setRefClass(
   fields = list(
     iterations = 'numeric',
     years = 'numeric',
-    populations = 'list',
+    populations = 'data.frame',
     pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'numeric',
@@ -668,7 +668,11 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       if (popi$extinct == TRUE) break
     }
     
-    if (savePopulations == TRUE) field("populations", append(field("populations"), list(popi)))
+    #if (savePopulations == TRUE) field("populations", append(field("populations"), list(popi)))
+    if (savePopulations == TRUE) {
+      field("populations", rbind(field("populations"), cbind(PopID = popi$popID, popi$tabIndsAll())))
+      #field("populations", append(field("populations"), list(popi)))
+    }
     
     for (stage in 1:length(field('pop.size'))) {
       .self$pop.size[[stage]] <- rbind.fill(.self$pop.size[[stage]], popi$pop.size[stage, ])
