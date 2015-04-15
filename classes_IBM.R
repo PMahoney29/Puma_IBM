@@ -748,13 +748,45 @@ simClass$methods(summary = function() {
     IRi <- .self$IR$mean[, N.years + 1]
     Fisi <- .self$Fis$mean[, N.years + 1]
 
-    outGen <- rbind(outGen, cbind(stat = "Na", mean = mean(Nai, na.rm = T), se = sd(Nai, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "Ne", mean = NA, se = NA)) #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "PropPoly", mean = mean(PropPolyi, na.rm = T), se = sd(PropPolyi, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "He", mean = mean(Hei, na.rm = T), se = sd(Hei, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "Ho", mean = mean(Hoi, na.rm = T), se = sd(Hoi, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "IR", mean = mean(IRi, na.rm = T), se = sd(IRi, na.rm = T)))
-    outGen <- rbind(outGen, cbind(stat = "Fis", mean = mean(Fisi, na.rm = T), se = sd(Fisi, na.rm = T)))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "Na", 
+                          mean = mean(Nai, na.rm = T), 
+                          se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(Nai, prob = c(0.025))),
+                          u95_rank = c(quantile(Nai, prob = c(0.975)))))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "Ne", mean = NA, se = NA)) 
+                    #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T) / sqrt(N.iter)))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "PropPoly", 
+                          mean = mean(PropPolyi, na.rm = T), 
+                          se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(PropPolyi, prob = c(0.025))),
+                          u95_rank = c(quantile(PropPolyi, prob = c(0.975)))))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "He", 
+                          mean = mean(Hei, na.rm = T), 
+                          se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(Hei, prob = c(0.025))),
+                          u95_rank = c(quantile(Hei, prob = c(0.975)))))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "Ho", 
+                          mean = mean(Hoi, na.rm = T), 
+                          se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(Hoi, prob = c(0.025))),
+                          u95_rank = c(quantile(Hoi, prob = c(0.975)))))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "IR", 
+                          mean = mean(IRi, na.rm = T), 
+                          se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(IRi, prob = c(0.025))),
+                          u95_rank = c(quantile(IRi, prob = c(0.975)))))
+    outGen <- rbind(outGen, 
+                    cbind(stat = "Fis", 
+                          mean = mean(Fisi, na.rm = T), 
+                          se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                          l95_rank = c(quantile(Fisi, prob = c(0.025))),
+                          u95_rank = c(quantile(Fisi, prob = c(0.975)))))
   
     out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
@@ -797,9 +829,13 @@ simClass$methods(plot = function(fieldStat) {
       mplots <- list()
       for (i in 1:length(ps)) {
         psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
-        psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
-        dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
-        erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
+        psi_low <- apply(ps[[i]], 2, function(x) quantile(x, prob = 0.025, na.rm=T))
+        psi_hi <- apply(ps[[i]], 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+        dat_psi <-  data.frame(month = 0:(ncol(ps[[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
+        erib <- aes(ymax = psi_u95, ymin = psi_l95)
+        #psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
+        #dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
+        #erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
         assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
                  labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
                  theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
@@ -833,11 +869,15 @@ simClass$methods(plot = function(fieldStat) {
     }
    
     if (fieldStat[p]=='PropPoly') {
-      pp <- sim1$field('PropPoly')
+      pp <- field('PropPoly')
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
-      pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
-      dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
-      erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+      pp_low <- apply(pp, 2, function(x) quantile(x, prob = 0.025, na.rm=T))
+      pp_hi <- apply(pp, 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+      dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
+      erib <- aes(ymax = pp_u95, ymin = pp_l95)
+      #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
+      #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
+      #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
       pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
                labs(x="Year", y="Prop of Polymorphic Loci") + ylim(c(0,1)) + 
                theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
@@ -850,9 +890,13 @@ simClass$methods(plot = function(fieldStat) {
     if (fieldStat[p]=='Na' | fieldStat[p]=='Ne' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
       fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
-      fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
-      dat_fi <- data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_se = fi_se)
-      erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
+      fi_low <- apply(fi, 2, function(x) quantile(x, prob = 0.025, na.rm=T))
+      fi_hi <- apply(fi, 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+      dat_fi <-  data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_l95 = fi_low, fi_u95 = fi_hi)
+      erib <- aes(ymax = fi_u95, ymin = fi_l95)
+      #fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
+      #dat_fi <- data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_se = fi_se)
+      #erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
       fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
         labs(x="Year", y=fieldStat[p]) + #ylim(c(0,1)) + 
         theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
