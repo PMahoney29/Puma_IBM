@@ -461,8 +461,13 @@ popClass$methods(updateBreedStat = function() {
         # kill any remaining kittens
         if (length(aL[[l]]$kittens) > 0) {
          for (ks in 1:length(aL[[l]]$kittens)) {
-           aL[[l]]$kittens[[ks]]$liveStat <- FALSE
-           aL[[l]]$kittens[[ks]]$mortMon <- .self$time
+           if (aL[[l]]$kittens[[ks]]$age < 12) {
+            aL[[l]]$kittens[[ks]]$liveStat <- FALSE
+            aL[[l]]$kittens[[ks]]$mortMon <- .self$time
+           }
+           else {
+             aL[[l]]$kittens[[ks]]$socialStat <- 'SubAdult'
+           }
          }
         }
       
