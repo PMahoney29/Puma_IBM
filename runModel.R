@@ -32,10 +32,13 @@ Kf <- 5
 Km <- 2
 
 sim1 <- simClass$new()
-sim1$startSim(iter = 5, years = 10, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
+sim1$startSim(iter = 10, years = 20, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, genOutput = F, savePopulations = T, verbose = T)
+              Kf = Kf, Km = Km, senesc = 15, genOutput = T, savePopulations = T, verbose = T)
 
 sim1$summary()
-sim1$plot(fieldStat=c('pop.size', 'lambda', 'PropPoly', 'Na', 'He', 'Ho', 'IR', 'Fis'))
+sim1$plot(fieldStat=c('pop.size', 'lambda', 'PropPoly', 'Na', 'Ho', 'He', 'IR', 'Fis'))
+
+# Plot projections
+matplot2(as.matrix(sim1$pop.size[[4]][1:250,]))
 
