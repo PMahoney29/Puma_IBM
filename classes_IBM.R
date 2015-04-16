@@ -755,7 +755,7 @@ simClass$methods(summary = function() {
                           l95_rank = c(quantile(Nai, prob = c(0.025))),
                           u95_rank = c(quantile(Nai, prob = c(0.975)))))
     outGen <- rbind(outGen, 
-                    cbind(stat = "Ne", mean = NA, se = NA)) 
+                    cbind(stat = "Ne", mean = NA, se = NA, l95_rank = NA, u95_rank = NA)) 
                     #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T) / sqrt(N.iter)))
     outGen <- rbind(outGen, 
                     cbind(stat = "PropPoly", 
@@ -787,6 +787,8 @@ simClass$methods(summary = function() {
                           se = sd(Fisi, na.rm = T) / sqrt(N.iter),
                           l95_rank = c(quantile(Fisi, prob = c(0.025))),
                           u95_rank = c(quantile(Fisi, prob = c(0.975)))))
+    
+    row.names(outGen) <- rep(NULL, nrow(outGen))
   
     out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
