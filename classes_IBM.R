@@ -713,13 +713,13 @@ simClass$methods(summary = function() {
   EmpLambda_mean <- mean(EmpLambda_means)
   EmpLambda_median <- median(EmpLambda_means)
   EmpLambda_se <- sd(EmpLambda_means) / sqrt(N.iter)
-  EmpLambda_quant <- quantile(EmpLambda_means, probs = c(0.025, 0.975))
+  EmpLambda_quant <- quantile(EmpLambda_means, probs = c(0.025, 0.975), na.rm = T)
   
   StochLogLambda_means <- apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T))
   StochLogLambda_mean <- mean(StochLogLambda_means)
   StochLogLambda_median <- median(StochLogLambda_means)
   StochLogLambda_se <- sd(StochLogLambda_means) / sqrt(N.iter)
-  StochLogLambda_quant <- quantile(StochLogLambda_means, probs = c(0.025, 0.975))
+  StochLogLambda_quant <- quantile(StochLogLambda_means, probs = c(0.025, 0.975), na.rm = T)
   
 
   # Extinction prob
@@ -752,8 +752,8 @@ simClass$methods(summary = function() {
                     cbind(stat = "Na", 
                           mean = mean(Nai, na.rm = T), 
                           se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Nai, prob = c(0.025))),
-                          u95_rank = c(quantile(Nai, prob = c(0.975)))))
+                          l95_rank = c(quantile(Nai, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(Nai, prob = c(0.975), na.rm = T))))
     outGen <- rbind(outGen, 
                     cbind(stat = "Ne", mean = NA, se = NA, l95_rank = NA, u95_rank = NA)) 
                     #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T) / sqrt(N.iter)))
@@ -761,32 +761,32 @@ simClass$methods(summary = function() {
                     cbind(stat = "PropPoly", 
                           mean = mean(PropPolyi, na.rm = T), 
                           se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(PropPolyi, prob = c(0.025))),
-                          u95_rank = c(quantile(PropPolyi, prob = c(0.975)))))
+                          l95_rank = c(quantile(PropPolyi, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(PropPolyi, prob = c(0.975), na.rm = T))))
     outGen <- rbind(outGen, 
                     cbind(stat = "He", 
                           mean = mean(Hei, na.rm = T), 
                           se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Hei, prob = c(0.025))),
-                          u95_rank = c(quantile(Hei, prob = c(0.975)))))
+                          l95_rank = c(quantile(Hei, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(Hei, prob = c(0.975), na.rm = T))))
     outGen <- rbind(outGen, 
                     cbind(stat = "Ho", 
                           mean = mean(Hoi, na.rm = T), 
                           se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Hoi, prob = c(0.025))),
-                          u95_rank = c(quantile(Hoi, prob = c(0.975)))))
+                          l95_rank = c(quantile(Hoi, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(Hoi, prob = c(0.975), na.rm = T))))
     outGen <- rbind(outGen, 
                     cbind(stat = "IR", 
                           mean = mean(IRi, na.rm = T), 
                           se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(IRi, prob = c(0.025))),
-                          u95_rank = c(quantile(IRi, prob = c(0.975)))))
+                          l95_rank = c(quantile(IRi, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(IRi, prob = c(0.975), na.rm = T))))
     outGen <- rbind(outGen, 
                     cbind(stat = "Fis", 
                           mean = mean(Fisi, na.rm = T), 
                           se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Fisi, prob = c(0.025))),
-                          u95_rank = c(quantile(Fisi, prob = c(0.975)))))
+                          l95_rank = c(quantile(Fisi, prob = c(0.025), na.rm = T)),
+                          u95_rank = c(quantile(Fisi, prob = c(0.975), na.rm = T))))
     
     row.names(outGen) <- rep(NULL, nrow(outGen))
   
