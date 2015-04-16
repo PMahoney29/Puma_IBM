@@ -617,15 +617,16 @@ popClass$methods(updateStats = function(genOutput) {
 })
 
 # Update time
-popClass$methods(incremTime = function() {
+popClass$methods(incremTime = function(senesc) {
   field('time', field('time') + 1)
   
   # age individuals
   alive <- field("indsAlive")
   for (i in 1:length(alive)) {
-    #alive[[i]]$age <- sum(alive[[i]]$age, 1, na.rm=T)
     alive[[i]]$age <- alive[[i]]$age + 1
-  }  
+    if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
+  } 
+  .self$pullAlive()
 })
 
 
@@ -636,7 +637,7 @@ popClass$methods(incremTime = function() {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+                                     Kf, Km, senesc, genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   field('iterations', iter)
   field('years', years)
   
@@ -657,13 +658,13 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     
     # fill with starting values
     popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput)
+                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput)
     
     # simulate population
     months <- years * 12
     for (m in 1:months) {
       popi$kill(surv)
-      popi$incremTime()
+      popi$incremTime(senesc)
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
       popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
