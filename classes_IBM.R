@@ -34,13 +34,14 @@ newSurv <- function(surv) {
 }
 
 # Generate litter size for COUGARS...needs to be adjusted for other species
-littSize <- function(l2, l3, l4) {
+littSize <- function(litterProbs) {
   indProb <- runif(1)
   
-  if (indProb <= l2) o <- 2
-  if (indProb > l2 & indProb <= l3) o <- 3
-  if (indProb > l3) o <- 4
-  
+  high <- min(which(litterProbs$cumProbs > indProb))
+  o <- litterProbs[high, 'LitterSize']
+  #if (indProb <= l2) o <- 2
+  #if (indProb > l2 & indProb <= l3) o <- 3
+  #if (indProb > l3) o <- 4
   o
 }
 
@@ -505,7 +506,7 @@ popClass$methods(updateBreedStat = function() {
 })
 
   # Assess reproduction
-popClass$methods(reproduce = function(l2,l3,l4,probBreed,probFemaleKitt,lociNames) {
+popClass$methods(reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames) {
   # Generate monthly probability of breeding
   tPB <- betaval(probBreed$prob, probBreed$se)
   
@@ -525,7 +526,7 @@ popClass$methods(reproduce = function(l2,l3,l4,probBreed,probFemaleKitt,lociName
         mate <- sample(m_alive, size = 1)
       
         # Generate number of kitts
-        numKitts <- littSize(l2, l3, l4)
+        numKitts <- littSize(litterProbs)
       
         # Breed
         #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
@@ -667,7 +668,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       popi$incremTime(senesc)
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
-      popi$reproduce(l2,l3,l4,probBreed,probFemaleKitt,lociNames)
+      popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
       #popi$kill(surv)
       popi$updateStats(genOutput)
       
