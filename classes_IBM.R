@@ -182,6 +182,7 @@ indClass <- setRefClass(
     reproStat = 'logical',
     reproHist = 'character',   ## another way of handling??
     liveStat = 'logical',
+    censored = 'logical',
     birthMon = 'numeric',
     mortMon = 'numeric',
     genotype = 'data.frame'))
@@ -244,7 +245,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   sexKitt <- runif(numKittens, min = 0, max = 1) <= probFemaleKitt
   sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
   
-    # Determine genotype..completely random following Mendelian principles
+    # Determine genotype...completely random following Mendelian principles
   gts <- rbind(field('genotype'), male$genotype)
 
   genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
@@ -263,7 +264,8 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   for (k in 1:numKittens) {
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
-                        reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
+                        reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
+                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
 
     # add to population
     ind$addToPop(population) 
@@ -307,7 +309,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                        genotype=sv[r,genoCols])
+                        genotype=sv[r,genoCols], censored = F)
     ind$addToPop(.self)
   }
   .self$pullAlive()
@@ -406,6 +408,7 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
        x$liveStat <- FALSE
        #x$mortMon <- popi$time
        x$mortMon <- .self$time
+       x$censored <- TRUE
       }))
     }
     else {
@@ -419,6 +422,7 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
         x$liveStat = FALSE
         #x$mortMon <- popi$time
         x$mortMon <- .self$time
+        x$censored <- TRUE
       }))
     }
   }
@@ -431,6 +435,7 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
         x$liveStat <- FALSE
         #x$mortMon <- popi$time
         x$mortMon <- .self$time
+        x$censored <- TRUE
       }))
     }
     else {
@@ -444,6 +449,7 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
         x$liveStat = FALSE
         #x$mortMon <- popi$time
         x$mortMon <- .self$time
+        x$censored <- TRUE
       }))
     }
   }
@@ -744,7 +750,7 @@ simClass$methods(summary = function() {
   }
   #llply(ps, function(x) c(mean(x[, ncol(x)]), sd(x[, ncol(x)]) / sqrt(N.iter)))
 
-  if (!is.null(.self$Na$mean)) {
+  if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
     # Mean final genetics
     outGen <- data.frame()
     Nai <- .self$Na$mean[, N.years + 1]
@@ -820,7 +826,7 @@ simClass$methods(summary = function() {
                                     row.names = c("Empirical Lambda", "Stochastic Lambda")),
                 ExtinctionProb = Prob.extinct,
                 Pop.size = outSize,
-                GeneticComposition = "No genetic output generated")    
+                GeneticComposition = "No genetic output generated: Check if genOutput = TRUE or if ExtinctionProb = 1")    
   }
   
   out
