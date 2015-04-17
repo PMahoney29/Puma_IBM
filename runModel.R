@@ -24,15 +24,16 @@ surv <- read.csv('./Data/survival//survivalMonthly.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
-l2 <- litterProbs[1, 'prob']
-l3 <- litterProbs[2, 'prob'] + l2
-l4 <- litterProbs[3, 'prob'] + l3
+litterProbs$cumProbs <- cumsum(litterProbs$prob)
+#l2 <- litterProbs[1, 'prob']
+#l3 <- litterProbs[2, 'prob'] + l2
+#l4 <- litterProbs[3, 'prob'] + l3
 probFemaleKitt <- 0.5
 Kf <- 5
 Km <- 2
 
 sim1 <- simClass$new()
-sim1$startSim(iter = 10, years = 20, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
+sim1$startSim(iter = 10, years = 25, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
               Kf = Kf, Km = Km, senesc = 15, genOutput = T, savePopulations = T, verbose = T)
 
