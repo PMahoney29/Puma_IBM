@@ -6,8 +6,10 @@
 ############################################################################
 
 ### NEED TO DO:
-# FIX UNIFORMLY ZERO IN INBREEDING FUNCTION (method updateStats)
-# Generate Ne stat
+## Generate Ne stat...not going to happen, need to output genetic data
+## Add imigration
+## Add flexible K
+## Finish parallel code
 ###
 
 #Load required packages
@@ -17,6 +19,9 @@ require(plyr)
 require(popbio)
 require(Rhh)
 require(ggplot2)
+require(parallel)
+require(foreach)
+require(doParallel)
 
 
 ###########################
@@ -35,13 +40,11 @@ newSurv <- function(surv) {
 
 # Generate litter size for COUGARS...needs to be adjusted for other species
 littSize <- function(litterProbs) {
+  if (sum(litterProbs$prob) != 1) 
+    stop("Litter size probabilities must sum to 1")
   indProb <- runif(1)
-  
   high <- min(which(litterProbs$cumProbs > indProb))
   o <- litterProbs[high, 'LitterSize']
-  #if (indProb <= l2) o <- 2
-  #if (indProb > l2 & indProb <= l3) o <- 3
-  #if (indProb > l3) o <- 4
   o
 }
 
@@ -140,7 +143,7 @@ simClass <- setRefClass(
     populations = 'data.frame',
     pop.size = 'list',
     lambda = 'data.frame',
-    extinct = 'numeric',
+    extinct = 'logical',
     Na = 'list',
     Ne = 'list',
     PropPoly = 'data.frame',
@@ -406,7 +409,6 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     if (allowF == 0) {
       invisible(llply(tsubAdultFAlive, function (x) {
        x$liveStat <- FALSE
-       #x$mortMon <- popi$time
        x$mortMon <- .self$time
        x$censored <- TRUE
       }))
@@ -420,7 +422,6 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
       }))
       invisible(llply(tsubAdultFAlive[-samp], function(x) {
         x$liveStat = FALSE
-        #x$mortMon <- popi$time
         x$mortMon <- .self$time
         x$censored <- TRUE
       }))
@@ -433,7 +434,6 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     if (allowM == 0) {
       invisible(llply(tsubAdultMAlive, function (x) {
         x$liveStat <- FALSE
-        #x$mortMon <- popi$time
         x$mortMon <- .self$time
         x$censored <- TRUE
       }))
@@ -447,7 +447,6 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
       }))
       invisible(llply(tsubAdultMAlive[-samp], function(x) {
         x$liveStat = FALSE
-        #x$mortMon <- popi$time
         x$mortMon <- .self$time
         x$censored <- TRUE
       }))
@@ -644,7 +643,9 @@ popClass$methods(incremTime = function(senesc) {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+                                     Kf, Km, senesc, genOutput = TRUE, 
+                                     savePopulations = TRUE, verbose = TRUE) {
+  start <- Sys.time()
   field('iterations', iter)
   field('years', years)
   
@@ -714,6 +715,164 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     field('lambda', rbind.fill(field('lambda'), popi$lambda))
     field('extinct', c(field('extinct'), popi$extinct))
   }
+  
+  print(paste('Computation time: ', (Sys.time() - start), sep=''))
+})
+
+simClass$methods(startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
+                                     surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
+                                     Kf, Km, senesc, genOutput = TRUE, 
+                                     savePopulations = TRUE, verbose = TRUE) {
+  start <- Sys.time()
+  sim1$field('iterations', iter)
+  sim1$field('years', years)
+  
+  cSim <- function(s1, s2) {
+
+    s1$populations <- rbind(s1$populations, s2$populations)
+    
+    for (stage in 1:length(s1$pop.size)) {
+      s1$pop.size[[stage]] <- rbind.fill(s1$pop.size[[stage]], s2$pop.size[[stage]])
+    }
+    
+    for (stat in 1:length(s1$Na)) {
+      s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
+    }
+      #for (stat in 1:length(s1$Ne)) {
+      #   s1$Ne[[stat]] <- rbind.fill(s1$Ne[[stat]], s2$Ne[[stat]])
+      #}
+    for (stat in 1:length(s1$He)) {
+      s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
+    }
+    for (stat in 1:length(s1$Ho)) {
+      s1$Ho[[stat]] <- rbind.fill(s1$Ho[[stat]], s2$Ho[[stat]])
+    }
+    for (stat in 1:length(s1$IR)) {
+      s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
+    }
+    for (stat in 1:length(s1$Fis)) {
+      s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
+    }
+    s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
+    s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
+    s1$extinct <- c(s1$extinct, s2$extinct)
+    return(s1)
+}
+  
+  varList = c('years', 'startValues', 'lociNames', 'genoCols', 'surv', 'ageTrans', 
+              'probBreed', 'litterProbs', 'probFemaleKitt', 'Kf', 'Km', 'senesc',
+              'genOutput', 'verbose')
+  packList <- c('methods', 'adegenet','plyr', 'popbio', 'Rhh')
+  
+
+  #start cluster
+  #numCores <- detectCores() - 1
+  cl <- makeCluster(numCores)
+  registerDoParallel(cl, cores = numCores)
+
+  #operation
+  o <- foreach(i = 1:iter, .combine = cSim, 
+          .packages = packList, 
+          .inorder = F, .verbose = FALSE) %dopar% {
+            source('classes_IBM.R')
+            
+            # new instances of popClass
+            popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
+            
+            # fill with starting values
+            popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
+                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput)
+            
+            # simulate population
+            months <- years * 12
+            for (m in 1:months) {
+              popi$kill(surv)
+              popi$incremTime(senesc)
+              popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
+              popi$updateBreedStat()
+              popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+              #popi$kill(surv)
+              popi$updateStats(genOutput)
+              
+              if (popi$extinct == TRUE) break
+            }
+            
+            #if (savePopulations == TRUE) sim1$field("populations", append(sim1$field("populations"), list(popi)))
+            out <- list()
+            if (savePopulations == TRUE) {
+              out$populations <- cbind(PopID = popi$popID, popi$tabIndsAll())
+            }
+            else {out$populations <- NULL}
+            
+            for (r in 1:nrow(popi$pop.size)) {
+              out$pop.size[[r]] <- popi$pop.size[r, ]
+            }
+            
+            out$lambda <- popi$lambda
+            out$extinct <- popi$extinct
+            
+            if (genOutput) {
+              out$Na$mean <- popi$Na[1, ]
+              out$Na$se <- popi$Na[2, ]
+              #for (stat in 1:length(out$field('Ne'))) {
+              #   out$Ne[[stat]] <- rbind.fill(out$Ne[[stat]], popi$Ne[stat, ])
+              #}
+              out$He$mean <- popi$He[1, ]
+              out$He$se <- popi$He[2, ]              
+
+              out$Ho$mean <- popi$Ho[1, ]
+              out$Ho$se <- popi$Ho[2, ]              
+
+              out$IR$mean <- popi$IR[1, ]
+              out$IR$se <- popi$IR[2, ]
+
+              out$Fis$mean <- popi$Fis[1, ]
+              out$Fis$se <- popi$Fis[2, ]
+              
+              out$PropPoly <- popi$PropPoly
+            }
+            else {
+              out$Na$mean <- NULL
+              out$Na$se <- NULL
+              #for (stat in 1:length(out$field('Ne'))) {
+              #   out$Ne[[stat]] <- rbind.fill(out$Ne[[stat]], popi$Ne[stat, ])
+              #}
+              out$He$mean <- NULL
+              out$He$se <- NULL              
+              
+              out$Ho$mean <- NULL
+              out$Ho$se <- NULL              
+              
+              out$IR$mean <- NULL
+              out$IR$se <- NULL
+              
+              out$Fis$mean <- NULL
+              out$Fis$se <- NULL
+              
+              out$PropPoly <- NULL
+            }
+        return(out)
+  }
+  #stop cluster
+  stopCluster(cl)
+  
+  # Set-up list structure for outputs stats
+  sim1$field('populations', o$populations)
+  sim1$field('pop.size', list(kittens = o$pop.size[[1]], 
+                              SubAdults = o$pop.size[[2]],
+                              Adults = o$pop.size[[3]],
+                              TotalN = o$pop.size[[4]]))
+  sim1$field('Na', list(mean = o$Na$mean, se = o$Na$se))
+  sim1$field('Ne', list(mean = c(), se = c()))
+  sim1$field('He', list(mean = o$He$mean, se = o$He$se))
+  sim1$field('Ho', list(mean = o$Ho$mean, se = o$Ho$se))
+  sim1$field('IR', list(mean = o$IR$mean, se = o$IR$se))
+  sim1$field('Fis', list(mean = o$Fis$mean, se = o$Fis$se))
+  sim1$field('PropPoly', o$PropPoly)
+  sim1$field('lambda', o$lambda)
+  sim1$field('extinct', o$extinct)
+  
+  print(paste('Computation time: ', (Sys.time() - start), sep=''))
 })
 
 simClass$methods(summary = function() {
