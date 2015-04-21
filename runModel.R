@@ -34,16 +34,19 @@ probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
   # Choose only one of the following litterProbs
 litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
-litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
-
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
+
+litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
+litterProbs$cumProbs <- cumsum(litterProbs$prob)
+
 probFemaleKitt <- 0.5
 senesc <- 15
 
 # Sex specific carrying capacity K
-Kf <- 5
-Km <- 2
-#Km <- rbind(c(1, 0.75), c(2, 0.25))
+# K <- c(N, prob1, prob2, ...probN); probabilities must sum to 1 across rows
+Kf <- matrix(c(5, 1, 0), nrow=1)
+Km <- rbind(c(1, 0.90, 0.10), 
+            c(2, 0.50, 0.50))
 
 # Model parameters
 genOutput <- T
