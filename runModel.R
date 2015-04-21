@@ -17,22 +17,35 @@
 #library(doParallel)
 source('classes_IBM.R')
 
-# Test instances of the two classes
+# Starting values
 startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
 genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 
+# Immigrant population
+immPop <- read.csv('./Data/genotypes/immigPop.csv')
+immRate <- (1/12) / 12
+immMaleProb <- 1
+
+# Demographics
 surv <- read.csv('./Data/survival//survivalMonthly.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
+
+  # Choose only one of the following litterProbs
 litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
+litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
+
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
 probFemaleKitt <- 0.5
+senesc <- 15
+
+# Sex specific carrying capacity K
 Kf <- 5
 Km <- 2
 #Km <- rbind(c(1, 0.75), c(2, 0.25))
-senesc <- 15
 
+# Model parameters
 genOutput <- T
 savePopulations <- T
 verbose <- T
@@ -40,16 +53,23 @@ iter = 10
 years = 25
 numCores <- detectCores() - 1
 
+# Run model in serial
 sim1 <- simClass$new()
 sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
+              Kf = Kf, Km = Km, senesc = senesc, 
+              immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+              genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
+# Run model in parallel
+sim1 <- simClass$new()
 sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
+              Kf = Kf, Km = Km, senesc = senesc, 
+              immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+              genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
-
+# Display summary statistics
 sim1$summary()
 sim1$plot(fieldStat=c('pop.size', 'lambda', 'PropPoly', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
