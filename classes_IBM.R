@@ -188,6 +188,7 @@ indClass <- setRefClass(
     censored = 'logical',
     birthMon = 'numeric',
     mortMon = 'numeric',
+    immigrant = 'logical',
     genotype = 'data.frame'))
 
 
@@ -268,7 +269,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
                         reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,])
+                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE)
 
     # add to population
     ind$addToPop(population) 
@@ -312,7 +313,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                        genotype=sv[r,genoCols], censored = F)
+                        genotype=sv[r,genoCols], censored = F, immigrant = F)
     ind$addToPop(.self)
   }
   .self$pullAlive()
@@ -559,6 +560,39 @@ popClass$methods(kill = function(surv) {
   .self$pullAlive()
 })
 
+# Add immigrants
+popClass$methods(addImmigrants = function(iP, immMaleProb, ageTrans) {
+  ro <- sample(1:nrow(iP), size = 1)
+  
+  # Pull geno and create new ID
+  newgeno <- iP[ro, -c(1:2)]
+  newID <- paste('iid', (length(.self$indsAll) + 1), sep="")
+  
+  # Determine sex and age of immigrant
+  if (runif(1) <= immMaleProb) {
+    sex <- 'M'
+    age <- round(runif(1, min=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age'],
+                 max=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']))
+  }
+  else {
+    sex <- 'F'
+    age <- round(runif(1, min=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age'],
+                       max=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']))
+    }
+  
+  # Create new immigrant and add to population
+  imm <- indClass$new(animID=newID, sex=sex, age=age, mother=as.character(NA), father=as.character(NA), 
+                      socialStat="SubAdult", reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
+                      birthMon=.self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE)
+  imm$addToPop(.self)
+  
+  # Update living populations
+  .self$pullAlive()
+  
+  # Return subset of immigrant populations
+  return(iP[-ro, ])
+})
+
 # Update population stats
 popClass$methods(updateStats = function(genOutput) {
   # pull living individuals
@@ -643,11 +677,13 @@ popClass$methods(incremTime = function(senesc) {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, genOutput = TRUE, 
-                                     savePopulations = TRUE, verbose = TRUE) {
+                                     Kf, Km, senesc, 
+                                     immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                                     genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
   field('iterations', iter)
   field('years', years)
+  immPop_subset <- immPop
   
   # Set-up list structure for outputs stats
   field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
@@ -673,6 +709,10 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     for (m in 1:months) {
       popi$kill(surv)
       popi$incremTime(senesc)
+      if (runif(1) <= immRate) {
+        immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
+        if (nrow(immPop_subset) == 0) immPop_subset <- immPop
+      }
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
@@ -721,11 +761,13 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
 
 simClass$methods(startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, genOutput = TRUE, 
-                                     savePopulations = TRUE, verbose = TRUE) {
+                                     Kf, Km, senesc, 
+                                     immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                                     genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
   sim1$field('iterations', iter)
   sim1$field('years', years)
+  immPop_subset <- immPop
   
   cSim <- function(s1, s2) {
 
@@ -788,6 +830,10 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             for (m in 1:months) {
               popi$kill(surv)
               popi$incremTime(senesc)
+              if (runif(1) <= immRate) {
+                immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
+                if (nrow(immPop_subset) == 0) immPop_subset <- immPop
+              }
               popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
               popi$updateBreedStat()
               popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
