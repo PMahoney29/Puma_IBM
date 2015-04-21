@@ -388,9 +388,8 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   
   adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
   adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
-
   adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
-  adultMalesAlive <- adultFemalesAlive[!sapply(adultMalesAlive, is.null)]
+  adultMalesAlive <- adultMalesAlive[!sapply(adultMalesAlive, is.null)]
   
   if (length(kitsAlive) > 0) {
     for (k in 1:length(kitsAlive)) {
@@ -405,15 +404,44 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   }
   
   if (length(tsubAdultFAlive) > 0) {
-    allowF <- Kf - length(adultFemalesAlive)
+    adF <- length(adultFemalesAlive)
+    
+    # Determine the K for the month
+    if (adF < Kf[1, 1]) {
+      rown <- which(runif(1) <= cumsum(Kf[1, -1]))[1]
+      kf <- Kf[rown, 1]
+    }    
+    else {
+      rown <- which(runif(1) <= cumsum(Kf[which(Kf[, 1] >= adF), -1]))[1]
+      kf <- Kf[rown, 1]
+    }
+    
+    # Identify the allowed space
+    allowF <- kf - adF
+    
+    # If reduction in K, remove adults
+    if (allowF < 0) {
+      numRemove <- abs(allowF) 
+      for (nR in 1:numRemove) {
+        ages <- unlist(llply(adultFemalesAlive, function(x) x$age))
+        toRemove <- which(ages == min(ages))
+        if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+        adultFemalesAlive[[toRemove]]$liveStat <- FALSE
+        adultFemalesAlive[[toRemove]]$mortMon <- .self$time
+        adultFemalesAlive <- adultFemalesAlive[[-toRemove]]
+      }
+    }
 
-    if (allowF == 0) {
+    # If no space available, kill off subAdult females of the appropriate age
+    if (allowF <= 0) {
       invisible(llply(tsubAdultFAlive, function (x) {
        x$liveStat <- FALSE
        x$mortMon <- .self$time
        x$censored <- TRUE
       }))
     }
+    
+    # Else if space is available, sample subAdult females of the appropriate age
     else {
       sampF.size <- min(length(tsubAdultFAlive), allowF)
       samp <- sample(1:length(tsubAdultFAlive), size = sampF.size)
@@ -430,15 +458,44 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
   }
     
   if (length(tsubAdultMAlive) > 0) {
-    allowM <- Km - length(adultMalesAlive)
+    adM <- length(adultMalesAlive)
     
-    if (allowM == 0) {
+    # Determine the K for the month
+    if (adM < Km[1, 1]) {
+      rown <- which(runif(1) <= cumsum(Km[1, -1]))[1]
+      km <- Km[rown, 1]
+    }
+    else {
+      rown <- which(runif(1) <= cumsum(Km[which(Km[, 1] == adM), -1]))[1]
+      km <- Km[rown, 1]
+    }
+    
+    # Identify the allowed space
+    allowM <- km - adM
+    
+    # If reduction in K, remove adults
+    if (allowM < 0) {
+     numRemove <- abs(allowM) 
+     for (nR in 1:numRemove) {
+      ages <- unlist(llply(adultMalesAlive, function(x) x$age))
+      toRemove <- which(ages == min(ages))
+      if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+      adultMalesAlive[[toRemove]]$liveStat <- FALSE
+      adultMalesAlive[[toRemove]]$mortMon <- .self$time
+      adultMalesAlive <- adultMalesAlive[[-toRemove]]
+     }
+    }
+    
+    # If no space available, kill off subAdult males of the appropriate age
+    if (allowM <= 0) {
       invisible(llply(tsubAdultMAlive, function (x) {
         x$liveStat <- FALSE
         x$mortMon <- .self$time
         x$censored <- TRUE
       }))
     }
+    
+    # Else if there is space, sample subAdult males of the appropriate age
     else {
       sampM.size <- min(length(tsubAdultMAlive), allowM)
       samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
@@ -519,8 +576,8 @@ popClass$methods(reproduce = function(litterProbs,probBreed,probFemaleKitt,lociN
   # Pull reproductive adults
   f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  #f_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  #m_alive <- llply(pop1$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  #f_alive <- llply(popi$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+  #m_alive <- llply(popi$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
   f_alive <- f_alive[!sapply(f_alive, is.null)]  
   m_alive <- m_alive[!sapply(m_alive, is.null)]  
   
