@@ -47,6 +47,9 @@ senesc <- 15
 Kf <- matrix(c(5, 1, 0), nrow=1)
 Km <- rbind(c(1, 0.90, 0.10), 
             c(2, 0.50, 0.50))
+#Km <- matrix(c(1, 1, 0), nrow=1)
+#Km <- matrix(c(2, 1, 0), nrow=1)
+
 
 # Model parameters
 genOutput <- T
