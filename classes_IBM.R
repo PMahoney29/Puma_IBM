@@ -19,6 +19,7 @@ require(plyr)
 require(popbio)
 require(Rhh)
 require(ggplot2)
+require(coda)
 require(parallel)
 require(foreach)
 require(doParallel)
@@ -408,12 +409,12 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     
     # Determine the K for the month
     if (adF < Kf[1, 1]) {
-      rown <- which(runif(1) <= cumsum(Kf[1, -1]))[1]
-      kf <- Kf[rown, 1]
+      rown <- which(runif(1) <= cumsum(Kf[1, -1]))
+      kf <- Kf[rown[1], 1]
     }    
     else {
-      rown <- which(runif(1) <= cumsum(Kf[which(Kf[, 1] >= adF), -1]))[1]
-      kf <- Kf[rown, 1]
+      rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
+      kf <- Kf[rown[1], 1]
     }
     
     # Identify the allowed space
@@ -462,12 +463,12 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
     
     # Determine the K for the month
     if (adM < Km[1, 1]) {
-      rown <- which(runif(1) <= cumsum(Km[1, -1]))[1]
-      km <- Km[rown, 1]
+      rown <- which(runif(1) <= cumsum(Km[1, -1]))
+      km <- Km[rown[1], 1]
     }
     else {
-      rown <- which(runif(1) <= cumsum(Km[which(Km[, 1] == adM), -1]))[1]
-      km <- Km[rown, 1]
+      rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
+      km <- Km[rown[1], 1]
     }
     
     # Identify the allowed space
