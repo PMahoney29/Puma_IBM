@@ -139,14 +139,15 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 simClass <- setRefClass(
   Class = 'simClass',
   fields = list(
-    Date = 'ANY',
-    SimTime = 'ANY',
+    Date = 'ANY',    #Change to appropriate posix class
+    SimTime = 'ANY', #Change to appropriate posix class
     iterations = 'numeric',
     years = 'numeric',
     populations = 'data.frame',
     pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'logical',
+    extinctTime = 'numeric',
     Na = 'list',
     Ne = 'list',
     PropPoly = 'data.frame',
@@ -777,17 +778,13 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
       popi$updateBreedStat()
       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
-      #popi$kill(surv)
       popi$updateStats(genOutput)
-      
       if (popi$extinct == TRUE) break
     }
     
-    #if (savePopulations == TRUE) field("populations", append(field("populations"), list(popi)))
-    if (savePopulations == TRUE) {
+    if (savePopulations == TRUE) 
       field("populations", rbind(field("populations"), cbind(PopID = popi$popID, popi$tabIndsAll())))
       #field("populations", append(field("populations"), list(popi)))
-    }
     
     for (stage in 1:length(field('pop.size'))) {
       .self$pop.size[[stage]] <- rbind.fill(.self$pop.size[[stage]], popi$pop.size[stage, ])
@@ -797,7 +794,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
         .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
       }
       #for (stat in 1:length(field('Ne'))) {
-    #   .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
+      # .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
       #}
       for (stat in 1:length(field('He'))) {
         .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
@@ -815,6 +812,8 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     }
     field('lambda', rbind.fill(field('lambda'), popi$lambda))
     field('extinct', c(field('extinct'), popi$extinct))
+    if (popi$extinct)
+      field('extinctTime', c(field('extinctTime'), popi$time / 12))
   }
   
   field('SimTime', (Sys.time() - start))
@@ -861,6 +860,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
     s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
     s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
     s1$extinct <- c(s1$extinct, s2$extinct)
+    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime / 12)
     return(s1)
 }
 
@@ -897,7 +897,6 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
               popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
               #popi$kill(surv)
               popi$updateStats(genOutput)
-              
               if (popi$extinct == TRUE) break
             }
             
@@ -914,6 +913,9 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             
             out$lambda <- popi$lambda
             out$extinct <- popi$extinct
+            if (out$extinct)
+              out$extinctTime <- popi$time
+            else {out$extinctTime <- NULL}
             
             if (genOutput) {
               out$Na$mean <- popi$Na[1, ]
@@ -975,6 +977,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
   field('PropPoly', o$PropPoly)
   field('lambda', o$lambda)
   field('extinct', o$extinct)
+  field('extinctTime', o$extinctTime)
 
   field('SimTime', (Sys.time() - start))
   #print(paste('Computation time: ', (Sys.time() - start), sep=''))
@@ -1000,6 +1003,20 @@ simClass$methods(summary = function() {
 
   # Extinction prob
   Prob.extinct <- mean(field('extinct'))
+  Extinct.time_mean <- mean(field('extinctTime'))
+  Extinct.time_median <- mean(field('extinctTime'))
+  if (length(field('extinctTime')) > 1) {
+    Extinct.time_quant <- HPDinterval(as.mcmc(field('extinctTime')), prob = 0.95, na.rm = T)
+    eTime <- data.frame(mean = Extinct.time_mean,
+                        median = Extinct.time_median,
+                        lHPDI95 = Extinct.time_quant[1],
+                        uHPDI95 = Extinct.time_quant[2])}
+  else {
+    eTime <- data.frame(mean = Extinct.time_mean,
+                         median = Extinct.time_median,
+                         lHPDI95 = 'Inestimable',
+                         uHPDI95 = 'Inestimable') 
+    }
   
   # Mean final population size
   ps <- field('pop.size')
@@ -1074,6 +1091,7 @@ simClass$methods(summary = function() {
                                   u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
                                   row.names = c("Empirical Lambda", "Stochastic Lambda")),
               ExtinctionProb = Prob.extinct,
+              ExtinctionTime = eTime,
               Pop.size = outSize,
               GeneticComposition = outGen)
   }
@@ -1096,7 +1114,7 @@ simClass$methods(summary = function() {
 
 simClass$methods(plot = function(fieldStat) {
   #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
-  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'He', 'Ho', 'IR', 'Fis', 'lambda')
+  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
   
   for (p in 1:length(fieldStat)) {
     par(ask=TRUE)
@@ -1143,6 +1161,15 @@ simClass$methods(plot = function(fieldStat) {
               axis.title.y = element_text(size = 20, vjust = 1))
       multiplot(lp1, lp2, cols = 1)
       #par(ask=T) 
+    }
+    
+    if (fieldStat[p]=='extinctTime') {
+     dat_et <- data.frame(x = field('extinctTime'))
+     etp <- ggplot(data = dat_et, mapping = aes(x = x)) + geom_histogram() + #xlim(c(0.7, 1.1)) +
+       aes(y = ..density..) + labs(x="Time to Extinction (Years)", y="Density") +
+       theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+             axis.title.y = element_text(size = 20, vjust = 1))
+     multiplot(etp)
     }
    
     if (fieldStat[p]=='PropPoly') {
