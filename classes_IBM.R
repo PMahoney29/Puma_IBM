@@ -989,13 +989,13 @@ simClass$methods(summary = function() {
   EmpLambda_mean <- mean(EmpLambda_means)
   EmpLambda_median <- median(EmpLambda_means)
   EmpLambda_se <- sd(EmpLambda_means) / sqrt(N.iter)
-  EmpLambda_quant <- quantile(EmpLambda_means, probs = c(0.025, 0.975), na.rm = T)
+  EmpLambda_quant <- HPDinterval(as.mcmc(EmpLambda_means), prob = 0.95, na.rm = T)
   
   StochLogLambda_means <- apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T))
   StochLogLambda_mean <- mean(StochLogLambda_means)
   StochLogLambda_median <- median(StochLogLambda_means)
   StochLogLambda_se <- sd(StochLogLambda_means) / sqrt(N.iter)
-  StochLogLambda_quant <- quantile(StochLogLambda_means, probs = c(0.025, 0.975), na.rm = T)
+  StochLogLambda_quant <- HPDinterval(as.mcmc(StochLogLambda_means), prob = 0.95, na.rm = T)
   
 
   # Extinction prob
@@ -1028,49 +1028,49 @@ simClass$methods(summary = function() {
                     cbind(stat = "Na", 
                           mean = mean(Nai, na.rm = T), 
                           se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Nai, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(Nai, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
-                    cbind(stat = "Ne", mean = NA, se = NA, l95_rank = NA, u95_rank = NA)) 
+                    cbind(stat = "Ne", mean = NA, se = NA, lHPDI95 = NA, uHPDI95 = NA)) 
                     #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T) / sqrt(N.iter)))
     outGen <- rbind(outGen, 
                     cbind(stat = "PropPoly", 
                           mean = mean(PropPolyi, na.rm = T), 
                           se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(PropPolyi, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(PropPolyi, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
                     cbind(stat = "He", 
                           mean = mean(Hei, na.rm = T), 
                           se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Hei, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(Hei, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
                     cbind(stat = "Ho", 
                           mean = mean(Hoi, na.rm = T), 
                           se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Hoi, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(Hoi, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
                     cbind(stat = "IR", 
                           mean = mean(IRi, na.rm = T), 
                           se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(IRi, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(IRi, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
                     cbind(stat = "Fis", 
                           mean = mean(Fisi, na.rm = T), 
                           se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                          l95_rank = c(quantile(Fisi, prob = c(0.025), na.rm = T)),
-                          u95_rank = c(quantile(Fisi, prob = c(0.975), na.rm = T))))
+                          lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
     
     row.names(outGen) <- rep(NULL, nrow(outGen))
   
     out <- list(N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                   median = c(EmpLambda_median, exp(StochLogLambda_median)),
-                                  l95_rank = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
-                                  u95_rank = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
+                                  lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
+                                  uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
                                   l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
                                   u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
                                   row.names = c("Empirical Lambda", "Stochastic Lambda")),
@@ -1082,8 +1082,8 @@ simClass$methods(summary = function() {
     out <- list(N.iter = N.iter, N.years = N.years,
                 Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                     median = c(EmpLambda_median, exp(StochLogLambda_median)),
-                                    l95_rank = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
-                                    u95_rank = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
+                                    lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
+                                    uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
                                     l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
                                     u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
                                     row.names = c("Empirical Lambda", "Stochastic Lambda")),
@@ -1107,8 +1107,8 @@ simClass$methods(plot = function(fieldStat) {
       mplots <- list()
       for (i in 1:length(ps)) {
         psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
-        psi_low <- apply(ps[[i]], 2, function(x) quantile(x, prob = 0.025, na.rm=T))
-        psi_hi <- apply(ps[[i]], 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+        psi_low <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+        psi_hi <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
         dat_psi <-  data.frame(month = 0:(ncol(ps[[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
         erib <- aes(ymax = psi_u95, ymin = psi_l95)
         #psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
@@ -1149,8 +1149,8 @@ simClass$methods(plot = function(fieldStat) {
     if (fieldStat[p]=='PropPoly') {
       pp <- field('PropPoly')
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
-      pp_low <- apply(pp, 2, function(x) quantile(x, prob = 0.025, na.rm=T))
-      pp_hi <- apply(pp, 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
       dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
       erib <- aes(ymax = pp_u95, ymin = pp_l95)
       #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
@@ -1168,8 +1168,8 @@ simClass$methods(plot = function(fieldStat) {
     if (fieldStat[p]=='Na' | fieldStat[p]=='Ne' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
       fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
-      fi_low <- apply(fi, 2, function(x) quantile(x, prob = 0.025, na.rm=T))
-      fi_hi <- apply(fi, 2, function(x) quantile(x, prob = 0.975, na.rm=T))
+      fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+      fi_hi <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
       dat_fi <-  data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_l95 = fi_low, fi_u95 = fi_hi)
       erib <- aes(ymax = fi_u95, ymin = fi_l95)
       #fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
