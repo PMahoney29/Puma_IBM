@@ -139,6 +139,8 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 simClass <- setRefClass(
   Class = 'simClass',
   fields = list(
+    Date = 'ANY',
+    SimTime = 'ANY',
     iterations = 'numeric',
     years = 'numeric',
     populations = 'data.frame',
@@ -739,6 +741,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
                                      immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                                      genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
+  field('Date', start)
   field('iterations', iter)
   field('years', years)
   immPop_subset <- immPop
@@ -814,7 +817,8 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     field('extinct', c(field('extinct'), popi$extinct))
   }
   
-  print(paste('Computation time: ', (Sys.time() - start), sep=''))
+  field('SimTime', (Sys.time() - start))
+  #print(paste('Computation time: ', (Sys.time() - start), sep=''))
 })
 
 simClass$methods(startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
@@ -823,8 +827,9 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
                                      immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                                      genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
-  sim1$field('iterations', iter)
-  sim1$field('years', years)
+  field('Date', start)
+  field('iterations', iter)
+  field('years', years)
   immPop_subset <- immPop
   
   cSim <- function(s1, s2) {
@@ -858,15 +863,10 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
     s1$extinct <- c(s1$extinct, s2$extinct)
     return(s1)
 }
-  
-  varList = c('years', 'startValues', 'lociNames', 'genoCols', 'surv', 'ageTrans', 
-              'probBreed', 'litterProbs', 'probFemaleKitt', 'Kf', 'Km', 'senesc',
-              'genOutput', 'verbose')
+
   packList <- c('methods', 'adegenet','plyr', 'popbio', 'Rhh')
-  
 
   #start cluster
-  #numCores <- detectCores() - 1
   cl <- makeCluster(numCores)
   registerDoParallel(cl, cores = numCores)
 
@@ -961,26 +961,27 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
   stopCluster(cl)
   
   # Set-up list structure for outputs stats
-  sim1$field('populations', o$populations)
-  sim1$field('pop.size', list(kittens = o$pop.size[[1]], 
+  field('populations', o$populations)
+  field('pop.size', list(kittens = o$pop.size[[1]], 
                               SubAdults = o$pop.size[[2]],
                               Adults = o$pop.size[[3]],
                               TotalN = o$pop.size[[4]]))
-  sim1$field('Na', list(mean = o$Na$mean, se = o$Na$se))
-  sim1$field('Ne', list(mean = c(), se = c()))
-  sim1$field('He', list(mean = o$He$mean, se = o$He$se))
-  sim1$field('Ho', list(mean = o$Ho$mean, se = o$Ho$se))
-  sim1$field('IR', list(mean = o$IR$mean, se = o$IR$se))
-  sim1$field('Fis', list(mean = o$Fis$mean, se = o$Fis$se))
-  sim1$field('PropPoly', o$PropPoly)
-  sim1$field('lambda', o$lambda)
-  sim1$field('extinct', o$extinct)
-  
-  print(paste('Computation time: ', (Sys.time() - start), sep=''))
+  field('Na', list(mean = o$Na$mean, se = o$Na$se))
+  field('Ne', list(mean = c(), se = c()))
+  field('He', list(mean = o$He$mean, se = o$He$se))
+  field('Ho', list(mean = o$Ho$mean, se = o$Ho$se))
+  field('IR', list(mean = o$IR$mean, se = o$IR$se))
+  field('Fis', list(mean = o$Fis$mean, se = o$Fis$se))
+  field('PropPoly', o$PropPoly)
+  field('lambda', o$lambda)
+  field('extinct', o$extinct)
+
+  field('SimTime', (Sys.time() - start))
+  #print(paste('Computation time: ', (Sys.time() - start), sep=''))
 })
 
 simClass$methods(summary = function() {
-  
+
   N.iter <- field('iterations')
   N.years <- field('years')
   
@@ -996,7 +997,6 @@ simClass$methods(summary = function() {
   StochLogLambda_median <- median(StochLogLambda_means)
   StochLogLambda_se <- sd(StochLogLambda_means) / sqrt(N.iter)
   StochLogLambda_quant <- HPDinterval(as.mcmc(StochLogLambda_means), prob = 0.95, na.rm = T)
-  
 
   # Extinction prob
   Prob.extinct <- mean(field('extinct'))
@@ -1011,7 +1011,6 @@ simClass$methods(summary = function() {
     se <- sd(ps[[p]][, ncol(ps[[p]])]) / sqrt(N.iter)
     outSize <- rbind(outSize, cbind(stage, mean, se))
   }
-  #llply(ps, function(x) c(mean(x[, ncol(x)]), sd(x[, ncol(x)]) / sqrt(N.iter)))
 
   if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
     # Mean final genetics
@@ -1066,7 +1065,7 @@ simClass$methods(summary = function() {
     
     row.names(outGen) <- rep(NULL, nrow(outGen))
   
-    out <- list(N.iter = N.iter, N.years = N.years,
+    out <- list(DateTime = field('Date'), CompTime = field('SimTime'), N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                   median = c(EmpLambda_median, exp(StochLogLambda_median)),
                                   lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
@@ -1107,8 +1106,8 @@ simClass$methods(plot = function(fieldStat) {
       mplots <- list()
       for (i in 1:length(ps)) {
         psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
-        psi_low <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
-        psi_hi <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+        psi_low <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+        psi_hi <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
         dat_psi <-  data.frame(month = 0:(ncol(ps[[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
         erib <- aes(ymax = psi_u95, ymin = psi_l95)
         #psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
@@ -1149,8 +1148,8 @@ simClass$methods(plot = function(fieldStat) {
     if (fieldStat[p]=='PropPoly') {
       pp <- field('PropPoly')
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
-      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
-      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
       dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
       erib <- aes(ymax = pp_u95, ymin = pp_l95)
       #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
@@ -1168,8 +1167,8 @@ simClass$methods(plot = function(fieldStat) {
     if (fieldStat[p]=='Na' | fieldStat[p]=='Ne' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
       fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
-      fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
-      fi_hi <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T))
+      fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+      fi_hi <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
       dat_fi <-  data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_l95 = fi_low, fi_u95 = fi_hi)
       erib <- aes(ymax = fi_u95, ymin = fi_l95)
       #fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
