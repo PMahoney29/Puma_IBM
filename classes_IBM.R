@@ -1153,27 +1153,27 @@ simClass$methods(plot = function(fieldStat) {
     par(ask=TRUE)
     
     if (fieldStat[p]=='pop.size') {
-      ps <- field(fieldStat[p])
-      mplots <- list()
-      for (i in 1:length(ps)) {
-        psi_mean <- apply(ps[[i]], 2, function(x) mean(x, na.rm=T))
-        psi_low <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
-        psi_hi <- apply(ps[[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
-        dat_psi <-  data.frame(month = 0:(ncol(ps[[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
-        erib <- aes(ymax = psi_u95, ymin = psi_l95)
-        #psi_se <- apply(ps[[i]], 2, function(x) sd(x, na.rm=T) / sqrt(nrow(ps[[i]])))
-        #dat_psi <- data.frame(month = 0:(ncol(ps[[i]])-1),psi_mean, psi_se)
-        #erib <- aes(ymax = psi_mean + psi_se, ymin = psi_mean - psi_se)
-        assign(paste('ps_', names(ps)[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-                 labs(x="Month", y=paste("Population Size:", names(ps)[i])) + #ylim(c(0,20)) + 
-                 theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
-                       axis.text.y=element_text(size=10),
-                       axis.title.x = element_text(size=10, vjust=-0.65),
-                       axis.title.y = element_text(size=10, vjust=1)) 
-        )
-        mplots[[i]] <- get(paste('ps_', names(ps)[[i]], sep=""))
-      }
+      ps <- field('pop.size')
+      for (t in 1:length(ps)) {
+        mplots <- list()
+        for (i in 1:length(ps[[t]])) {
+          psi_mean <- apply(ps[[t]][[i]], 2, function(x) mean(x, na.rm=T))
+          psi_low <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+          psi_hi <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+          dat_psi <-  data.frame(month = 0:(ncol(ps[[t]][[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
+          erib <- aes(ymax = psi_u95, ymin = psi_l95)
+          assign(paste('ps_', names(ps[[t]])[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+                   ggtitle(paste(names(ps)[t], 'Population', sep=' ')) +
+                   labs(x="Month", y=paste("Population Size:", names(ps[[t]])[i])) + #ylim(c(0,20)) + 
+                   theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
+                         axis.text.y=element_text(size=10),
+                         axis.title.x = element_text(size=10, vjust=-0.65),
+                         axis.title.y = element_text(size=10, vjust=1)) 
+          )
+          mplots[[i]] <- get(paste('ps_', names(ps[[t]])[i], sep=""))
+        }
       multiplot(plotlist=mplots, cols = 2)
+      }
     }
     
     if (fieldStat[p]=='lambda') {
