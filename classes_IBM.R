@@ -149,7 +149,7 @@ simClass <- setRefClass(
     extinct = 'logical',
     extinctTime = 'numeric',
     Na = 'list',
-    Ne = 'list',
+    Ne = 'data.frame',
     PropPoly = 'data.frame',
     He = 'list',
     Ho = 'list',
@@ -307,7 +307,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
                          Males = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
                          All = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total"))))
   field('Na', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('Ne', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
+  field('Ne', data.frame(Y0 = c(0)))
   field('He', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
   field('Ho', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
   field('IR', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
@@ -378,7 +378,7 @@ popClass$methods(pullAlive = function() {
 })
 
 # Assess stage transitions
-popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
+popClass$methods(stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
   iAlive <- field('indsAlive')
   
   kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
@@ -513,6 +513,24 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf) {
         x$liveStat = FALSE
         x$mortMon <- .self$time
         x$censored <- TRUE
+      }))
+    }
+  }
+  
+  #  If now adult or subadult males of the appropriate age, allow younger males to move up
+  if (length(tsubAdultMAlive) == 0 & length(adultMalesAlive) == 0) {
+    tsaMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
+                                                     x$age >= minMaleReproAge) x)
+    tsaMAlive <- tsaMAlive[!sapply(tsaMAlive, is.null)]
+    
+    if (length(tsaMAlive) > 0) {
+      rown <- which(runif(1) <= cumsum(Km[1, -1]))
+      allowM <- Km[rown[1], 1]
+      sampM.size <- min(length(tsaMAlive), allowM)
+      samp <- sample(1:length(tsaMAlive), size = sampM.size)
+      invisible(llply(tsaMAlive[samp], function(x) {
+        x$socialStat = 'Adult'
+        x$reproStat = TRUE
       }))
     }
   }
@@ -662,12 +680,6 @@ popClass$methods(updateStats = function(genOutput) {
   iAlive <- field('indsAlive')
   
   # update population size
-  #op <- matrix(0, nrow = 4, ncol=1, byrow = F)
-  #op[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
-  #op[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
-  #op[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
-  #op[4,1] <- sum(op[1:3,1])
-  #.self$pop.size[, paste("M", field('time'), sep="")] <- op
   op <- list()
   of <- matrix(0, nrow = 4, ncol=1, byrow = F)
   of[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='F'))))
@@ -723,8 +735,22 @@ popClass$methods(updateStats = function(genOutput) {
       # Allelic richness Na
       .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
     
-      # Effective Ne
-    
+      # Ne
+      if (year == 'Y0') {
+        fem <- llply(iAlive, function (x) if (x$sex == 'F' & x$socialStat == 'Adult') x)
+        fem <- length(fem[!sapply(fem, is.null)])
+        mal <- llply(iAlive, function (x) if (x$sex == 'M' & x$socialStat == 'Adult') x)
+        mal <- length(mal[!sapply(mal, is.null)]) 
+        .self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
+      }
+      else {
+        fem <- llply(iAlive, function (x) if (x$sex == 'F' & grepl(':', x$reproHist) >= 1) x)
+        fem <- length(fem[!sapply(fem, is.null)])
+        mal <- llply(iAlive, function (x) if (x$sex == 'M' & grepl(':', x$reproHist) >= 1) x)
+        mal <- length(mal[!sapply(mal, is.null)]) 
+        .self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
+      }
+
       # Proportion of alleles polymorphic
       .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
     
@@ -765,7 +791,7 @@ popClass$methods(incremTime = function(senesc) {
 
 simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, 
+                                     Kf, Km, senesc, minMaleReproAge, 
                                      immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                                      genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
@@ -779,7 +805,6 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
                          Males = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
                          All = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c())))
   field('Na', list(mean = c(), se = c()))
-  field('Ne', list(mean = c(), se = c()))
   field('He', list(mean = c(), se = c()))
   field('Ho', list(mean = c(), se = c()))
   field('IR', list(mean = c(), se = c()))
@@ -804,7 +829,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
         immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
         if (nrow(immPop_subset) == 0) immPop_subset <- immPop
       }
-      popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
+      popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
       popi$updateBreedStat()
       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
       popi$updateStats(genOutput)
@@ -825,9 +850,6 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
       for (stat in 1:length(field('Na'))) {
         .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
       }
-      #for (stat in 1:length(field('Ne'))) {
-      # .self$Ne[[stat]] <- rbind.fill(.self$Ne[[stat]], popi$Ne[stat, ])
-      #}
       for (stat in 1:length(field('He'))) {
         .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
       }
@@ -841,11 +863,12 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
         .self$Fis[[stat]] <- rbind.fill(.self$Fis[[stat]], popi$Fis[stat, ])
       }
       field('PropPoly', rbind.fill(field('PropPoly'), popi$PropPoly))
+      field('Ne', rbind.fill(field('Ne'), popi$Ne))
     }
     field('lambda', rbind.fill(field('lambda'), popi$lambda))
     field('extinct', c(field('extinct'), popi$extinct))
     if (popi$extinct)
-      field('extinctTime', c(field('extinctTime'), popi$time / 12))
+      field('extinctTime', c(field('extinctTime'), (popi$time / 12)))
   }
   
   field('SimTime', (Sys.time() - start))
@@ -854,7 +877,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
 
 simClass$methods(startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
                                      surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, 
+                                     Kf, Km, senesc, minMaleReproAge,
                                      immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                                      genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
   start <- Sys.time()
@@ -872,13 +895,10 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
         s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
       }
     }
-
     for (stat in 1:length(s1$Na)) {
       s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
     }
-    #for (stat in 1:length(s1$Ne)) {
-    #   s1$Ne[[stat]] <- rbind.fill(s1$Ne[[stat]], s2$Ne[[stat]])
-    #}
+
     for (stat in 1:length(s1$He)) {
       s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
     }
@@ -892,9 +912,10 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
       s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
     }
     s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
+    s1$Ne <- rbind.fill(s1$Ne, s2$Ne)
     s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
     s1$extinct <- c(s1$extinct, s2$extinct)
-    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime / 12)
+    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
     return(s1)
   }
 
@@ -926,7 +947,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
                 immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
                 if (nrow(immPop_subset) == 0) immPop_subset <- immPop
               }
-              popi$stageAdjust(ageTrans, Km=Km, Kf=Kf)
+              popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
               popi$updateBreedStat()
               popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
               #popi$kill(surv)
@@ -948,15 +969,13 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             out$lambda <- popi$lambda
             out$extinct <- popi$extinct
             if (out$extinct)
-              out$extinctTime <- popi$time
+              out$extinctTime <- popi$time / 12
             else {out$extinctTime <- NULL}
             
             if (genOutput) {
               out$Na$mean <- popi$Na[1, ]
               out$Na$se <- popi$Na[2, ]
-              #for (stat in 1:length(out$field('Ne'))) {
-              #   out$Ne[[stat]] <- rbind.fill(out$Ne[[stat]], popi$Ne[stat, ])
-              #}
+
               out$He$mean <- popi$He[1, ]
               out$He$se <- popi$He[2, ]              
 
@@ -970,13 +989,12 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
               out$Fis$se <- popi$Fis[2, ]
               
               out$PropPoly <- popi$PropPoly
+              out$Ne <- popi$Ne
             }
             else {
               out$Na$mean <- NULL
               out$Na$se <- NULL
-              #for (stat in 1:length(out$field('Ne'))) {
-              #   out$Ne[[stat]] <- rbind.fill(out$Ne[[stat]], popi$Ne[stat, ])
-              #}
+
               out$He$mean <- NULL
               out$He$se <- NULL              
               
@@ -990,6 +1008,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
               out$Fis$se <- NULL
               
               out$PropPoly <- NULL
+              out$Ne <- NULL
             }
         return(out)
           }
@@ -1001,14 +1020,14 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
   field('populations', o$populations)
   field('pop.size', o$pop.size)
   field('Na', list(mean = o$Na$mean, se = o$Na$se))
-  field('Ne', list(mean = c(), se = c()))
+  field('Ne', o$Ne)
   field('He', list(mean = o$He$mean, se = o$He$se))
   field('Ho', list(mean = o$Ho$mean, se = o$Ho$se))
   field('IR', list(mean = o$IR$mean, se = o$IR$se))
   field('Fis', list(mean = o$Fis$mean, se = o$Fis$se))
   field('PropPoly', o$PropPoly)
   field('lambda', o$lambda)
-  field('extinct', o$extinct)
+  if (!is.null(o$extinct)) field('extinct', o$extinct)
   field('extinctTime', o$extinctTime)
 
   field('SimTime', (Sys.time() - start))
@@ -1066,7 +1085,7 @@ simClass$methods(summary = function() {
     # Mean final genetics
     outGen <- data.frame()
     Nai <- .self$Na$mean[, N.years + 1]
-    #Nei <- .self$Ne$mean[, N.years + 1]
+    Nei <- .self$Ne[, N.years + 1]
     PropPolyi <- .self$PropPoly[, N.years + 1]
     Hei <- .self$He$mean[, N.years + 1]
     Hoi <- .self$Ho$mean[, N.years + 1]
@@ -1080,8 +1099,11 @@ simClass$methods(summary = function() {
                           lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
                           uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
-                    cbind(stat = "Ne", mean = NA, se = NA, lHPDI95 = NA, uHPDI95 = NA)) 
-                    #mean = mean(Nei, na.rm = T), se = sd(Nei, na.rm = T) / sqrt(N.iter)))
+                    cbind(stat = "Ne", 
+                          mean = mean(Nei, na.rm = T), 
+                          se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                          lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
     outGen <- rbind(outGen, 
                     cbind(stat = "PropPoly", 
                           mean = mean(PropPolyi, na.rm = T), 
@@ -1147,7 +1169,7 @@ simClass$methods(summary = function() {
 
 simClass$methods(plot = function(fieldStat) {
   #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
-  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
+  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'Ne', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
   
   for (p in 1:length(fieldStat)) {
     par(ask=TRUE)
@@ -1206,7 +1228,7 @@ simClass$methods(plot = function(fieldStat) {
     }
    
     if (fieldStat[p]=='PropPoly') {
-      pp <- field('PropPoly')
+      pp <- field(fieldStat[p])
       pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
       pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
       pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
@@ -1216,7 +1238,7 @@ simClass$methods(plot = function(fieldStat) {
       #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
       #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
       pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-               labs(x="Year", y="Prop of Polymorphic Loci") + ylim(c(0,1)) + 
+               labs(x="Year", y='Prop of Polymorphic Loci') + ylim(c(0,1)) + 
                theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
                      axis.text.y=element_text(size=20),
                      axis.title.x = element_text(size=20, vjust=-0.65),
@@ -1224,7 +1246,26 @@ simClass$methods(plot = function(fieldStat) {
       multiplot(pp1, cols=1)
     }
     
-    if (fieldStat[p]=='Na' | fieldStat[p]=='Ne' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
+    if (fieldStat[p]=='Ne') {
+      pp <- field(fieldStat[p])
+      pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
+      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+      dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
+      erib <- aes(ymax = pp_u95, ymin = pp_l95)
+      #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
+      #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
+      #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+        labs(x="Year", y='Ne') + #ylim(c(0,1)) + 
+        theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+              axis.text.y=element_text(size=20),
+              axis.title.x = element_text(size=20, vjust=-0.65),
+              axis.title.y = element_text(size=20, vjust=1)) 
+      multiplot(pp1, cols=1)
+    }
+    
+    if (fieldStat[p]=='Na' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
       fi <- field(fieldStat[p])$mean
       fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
       fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
