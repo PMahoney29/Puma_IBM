@@ -55,8 +55,8 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 10
-years = 25
+iter = 1000
+years = 50
 numCores <- detectCores() - 1
 
 # Run model in serial
@@ -80,4 +80,4 @@ sim1$summary()
 sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
-matplot2(as.matrix(sim1$pop.size[[4]][1:10,]))
+matplot2(as.matrix(sim1$pop.size[[3]][[4]][1:10,]))
