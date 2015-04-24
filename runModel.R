@@ -35,23 +35,23 @@ probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
   # Choose only one of the following litterProbs
 litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
-
-litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
-litterProbs$cumProbs <- cumsum(litterProbs$prob)
+#litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
+#litterProbs$cumProbs <- cumsum(litterProbs$prob)
 
 probFemaleKitt <- 0.5
 senesc <- 15
+minMaleReproAge <- 30  # in months
 
 # Sex specific carrying capacity K
 # K <- c(N, prob1, prob2, ...probN); probabilities must sum to 1 across rows
 Kf <- matrix(c(5, 1, 0), nrow=1)
-Km <- rbind(c(1, 0.90, 0.10), 
-            c(2, 0.50, 0.50))
-#Km <- matrix(c(1, 1, 0), nrow=1)
-#Km <- matrix(c(2, 1, 0), nrow=1)
+Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
+#Km <- rbind(c(1, 0.90, 0.10), 
+#            c(2, 0.50, 0.50))
+#Km <- matrix(c(1, 1, 0), nrow=1)  #Km = 1
 
 
-# Model parameters
+# Simulation parameters
 genOutput <- T
 savePopulations <- T
 verbose <- T
@@ -63,7 +63,7 @@ numCores <- detectCores() - 1
 sim1 <- simClass$new()
 sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, 
+              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
@@ -71,13 +71,13 @@ sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames =
 sim1 <- simClass$new()
 sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, 
+              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
 # Display summary statistics
 sim1$summary()
-sim1$plot(fieldStat=c('pop.size', 'lambda', 'PropPoly', 'Na', 'Ho', 'He', 'IR', 'Fis'))
+sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
 matplot2(as.matrix(sim1$pop.size[[4]][1:10,]))
