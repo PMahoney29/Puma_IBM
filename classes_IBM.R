@@ -165,7 +165,7 @@ popClass <- setRefClass(
     indsAlive = 'list',
     activeLitters = 'list',
     time = 'numeric',
-    pop.size = 'data.frame',
+    pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'logical',
     Na = 'data.frame',
@@ -303,7 +303,9 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols, genOutput) {
   sv <- startValues
   field('extinct', FALSE)
-  field('pop.size', data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")))
+  field('pop.size', list(Females = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
+                         Males = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
+                         All = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total"))))
   field('Na', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
   field('Ne', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
   field('He', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
@@ -660,15 +662,40 @@ popClass$methods(updateStats = function(genOutput) {
   iAlive <- field('indsAlive')
   
   # update population size
-  op <- matrix(0, nrow = 4, ncol=1, byrow = F)
-  op[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
-  op[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
-  op[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
-  op[4,1] <- sum(op[1:3,1])
-  .self$pop.size[, paste("M", field('time'), sep="")] <- op
+  #op <- matrix(0, nrow = 4, ncol=1, byrow = F)
+  #op[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
+  #op[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
+  #op[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
+  #op[4,1] <- sum(op[1:3,1])
+  #.self$pop.size[, paste("M", field('time'), sep="")] <- op
+  op <- list()
+  of <- matrix(0, nrow = 4, ncol=1, byrow = F)
+  of[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='F'))))
+  of[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='F'))))
+  of[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='F'))))
+  of[4,1] <- sum(of[1:3,1])
+  op$Females <- of
+  
+  om <- matrix(0, nrow = 4, ncol=1, byrow = F)
+  om[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='M'))))
+  om[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='M'))))
+  om[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='M'))))
+  om[4,1] <- sum(om[1:3,1])
+  op$Males <- om
+  
+  ot <- matrix(0, nrow = 4, ncol=1, byrow = F)
+  ot[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
+  ot[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
+  ot[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
+  ot[4,1] <- sum(ot[1:3,1])
+  op$All <- ot
+  
+  for (subP in 1:length(field('pop.size'))) {
+   .self$pop.size[[subP]][, paste("M", field('time'), sep="")] <- op[[subP]]
+  }
   
   # update extinction
-  if (op[4, 1] <= 1) field('extinct', TRUE)
+  if (op$All[4, 1] <= 1) field('extinct', TRUE)
   else {
     if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) field('extinct', TRUE)
     if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) field('extinct', TRUE)
@@ -680,7 +707,7 @@ popClass$methods(updateStats = function(genOutput) {
     
    # lambda
     if (field('time') == 0) .self$lambda[, year] <- 1
-    else {.self$lambda[, year] <- .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size'))] / .self$pop.size[nrow(field('pop.size')), ncol(field('pop.size')) - 12]}
+    else {.self$lambda[, year] <- .self$pop.size$All[nrow(.self$pop.size$All), ncol(.self$pop.size$All)] / .self$pop.size$All[nrow(.self$pop.size$All), ncol(.self$pop.size$All) - 12]}
     
     if (genOutput) {
       ### Genetic metrics
@@ -748,7 +775,9 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
   immPop_subset <- immPop
   
   # Set-up list structure for outputs stats
-  field('pop.size', list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
+  field('pop.size', list(Females = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
+                         Males = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
+                         All = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c())))
   field('Na', list(mean = c(), se = c()))
   field('Ne', list(mean = c(), se = c()))
   field('He', list(mean = c(), se = c()))
@@ -785,10 +814,13 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     if (savePopulations == TRUE) 
       field("populations", rbind(field("populations"), cbind(PopID = popi$popID, popi$tabIndsAll())))
       #field("populations", append(field("populations"), list(popi)))
-    
-    for (stage in 1:length(field('pop.size'))) {
-      .self$pop.size[[stage]] <- rbind.fill(.self$pop.size[[stage]], popi$pop.size[stage, ])
+
+    for (subP in 1:length(field('pop.size'))) {
+      for (stage in 1:length(field('pop.size')[[subP]])) {
+        .self$pop.size[[subP]][[stage]] <- rbind.fill(.self$pop.size[[subP]][[stage]], popi$pop.size[[subP]][stage, ])
+      }
     }
+    
    if (genOutput) {
       for (stat in 1:length(field('Na'))) {
         .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
@@ -835,16 +867,18 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
 
     s1$populations <- rbind(s1$populations, s2$populations)
     
-    for (stage in 1:length(s1$pop.size)) {
-      s1$pop.size[[stage]] <- rbind.fill(s1$pop.size[[stage]], s2$pop.size[[stage]])
+    for (subP in 1:length(s1$pop.size)) {
+      for (stage in 1:length(s1$pop.size[[subP]])) {
+        s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
+      }
     }
-    
+
     for (stat in 1:length(s1$Na)) {
       s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
     }
-      #for (stat in 1:length(s1$Ne)) {
-      #   s1$Ne[[stat]] <- rbind.fill(s1$Ne[[stat]], s2$Ne[[stat]])
-      #}
+    #for (stat in 1:length(s1$Ne)) {
+    #   s1$Ne[[stat]] <- rbind.fill(s1$Ne[[stat]], s2$Ne[[stat]])
+    #}
     for (stat in 1:length(s1$He)) {
       s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
     }
@@ -862,7 +896,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
     s1$extinct <- c(s1$extinct, s2$extinct)
     s1$extinctTime <- c(s1$extinctTime, s2$extinctTime / 12)
     return(s1)
-}
+  }
 
   packList <- c('methods', 'adegenet','plyr', 'popbio', 'Rhh')
 
@@ -907,10 +941,10 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             }
             else {out$populations <- NULL}
             
-            for (r in 1:nrow(popi$pop.size)) {
-              out$pop.size[[r]] <- popi$pop.size[r, ]
-            }
-            
+            out$pop.size <- llply(popi$pop.size, function(x) {
+              list(Kittens = x[1,], SubAdults = x[2,], Adults = x[3,], TotalN = x[4,])
+            })
+
             out$lambda <- popi$lambda
             out$extinct <- popi$extinct
             if (out$extinct)
@@ -958,16 +992,14 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
               out$PropPoly <- NULL
             }
         return(out)
-  }
+          }
+  
   #stop cluster
   stopCluster(cl)
   
   # Set-up list structure for outputs stats
   field('populations', o$populations)
-  field('pop.size', list(kittens = o$pop.size[[1]], 
-                              SubAdults = o$pop.size[[2]],
-                              Adults = o$pop.size[[3]],
-                              TotalN = o$pop.size[[4]]))
+  field('pop.size', o$pop.size)
   field('Na', list(mean = o$Na$mean, se = o$Na$se))
   field('Ne', list(mean = c(), se = c()))
   field('He', list(mean = o$He$mean, se = o$He$se))
@@ -1020,14 +1052,15 @@ simClass$methods(summary = function() {
   
   # Mean final population size
   ps <- field('pop.size')
-  outSize <- data.frame()
-  for (p in 1:length(ps)) {
-    ps[[p]][is.na(ps[[p]])] <- 0
-    stage <- names(ps)[p]
-    mean <- mean(ps[[p]][, ncol(ps[[p]])])
-    se <- sd(ps[[p]][, ncol(ps[[p]])]) / sqrt(N.iter)
-    outSize <- rbind(outSize, cbind(stage, mean, se))
-  }
+  outSize <- llply(ps, function (x) {
+    ldply(x, function (y) {
+      y[is.na(y)] <- 0
+      mean <- mean(y[, ncol(y)])
+      se <- sd(y[, ncol(y)]) / sqrt(N.iter)
+      HPDI95 = HPDinterval(as.mcmc(y[, ncol(y)]), prob = 0.95, na.rm = T)
+      return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
+    })
+  })
 
   if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
     # Mean final genetics
