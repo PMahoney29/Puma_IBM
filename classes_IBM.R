@@ -568,7 +568,7 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
 })
 
   # Check breeding status
-popClass$methods(updateBreedStat = function() {
+popClass$methods(updateBreedStat = function(ageTrans) {
   aL <- field('activeLitters')
   
   # Adjust litters based on mortality of mother
@@ -584,6 +584,9 @@ popClass$methods(updateBreedStat = function() {
            }
            else {
              aL[[l]]$kittens[[ks]]$socialStat <- 'SubAdult'
+             rang <- ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'high']
+             if (length(rang) == 1) aL[[l]]$kittens[[ks]]$ageToAdult <- rang
+             else aL[[l]]$kittens[[ks]]$ageToAdult <- sample(rang, size = 1)  
            }
          }
         }
@@ -683,17 +686,23 @@ popClass$methods(addImmigrants = function(iP, immMaleProb, ageTrans) {
     sex <- 'M'
     age <- round(runif(1, min=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age'],
                  max=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']))
+    rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
+    if (length(rang) == 1) ata <- rang
+    else ata <- sample(rang, size = 1)   
   }
   else {
     sex <- 'F'
     age <- round(runif(1, min=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age'],
                        max=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']))
+    rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
+    if (length(rang) == 1) ata <- rang
+    else ata <- sample(rang, size = 1)
     }
   
   # Create new immigrant and add to population
   imm <- indClass$new(animID=newID, sex=sex, age=age, mother=as.character(NA), father=as.character(NA), 
                       socialStat="SubAdult", reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                      birthMon=.self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE)
+                      birthMon=.self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE, ageToAdult=ata)
   imm$addToPop(.self)
   
   # Update living populations
@@ -859,7 +868,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
         if (nrow(immPop_subset) == 0) immPop_subset <- immPop
       }
       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
-      popi$updateBreedStat()
+      popi$updateBreedStat(ageTrans)
       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
       popi$updateStats(genOutput)
       if (popi$extinct == TRUE) break
@@ -965,7 +974,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             
             # fill with starting values
             popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
+                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans=ageTrans)
             
             # simulate population
             months <- years * 12
@@ -977,7 +986,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
                 if (nrow(immPop_subset) == 0) immPop_subset <- immPop
               }
               popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
-              popi$updateBreedStat()
+              popi$updateBreedStat(ageTrans)
               popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
               #popi$kill(surv)
               popi$updateStats(genOutput)
