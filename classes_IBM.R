@@ -186,6 +186,7 @@ indClass <- setRefClass(
     mother = 'character',
     father = 'character',
     socialStat = 'character',
+    ageToAdult = 'numeric',
     reproStat = 'logical',
     reproHist = 'character',   ## another way of handling??
     liveStat = 'logical',
@@ -273,7 +274,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
     # gen Individual
     ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
                         reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE)
+                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE, ageToAdult=as.numeric(NA))
 
     # add to population
     ind$addToPop(population) 
@@ -300,7 +301,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 ##   popClass methods   ##
 ##########################
 
-popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, socialStat, reproStat, genoCols, genOutput) {
+popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
   sv <- startValues
   field('extinct', FALSE)
   field('pop.size', list(Females = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
@@ -319,7 +320,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   for (r in 1:nrow(sv)) {
     ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                         reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                        genotype=sv[r,genoCols], censored = F, immigrant = F)
+                        genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
     ind$addToPop(.self)
   }
   .self$pullAlive()
@@ -327,6 +328,24 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
   # Identify active litters
   iAlive <- field('indsAlive')
   aLit <- list() 
+  
+    # pull subAdults
+  sal <- llply(iAlive, function (x) if (x$socialStat == 'SubAdult') x)
+  sal <- sal[!sapply(sal, is.null)]
+  ageTA <- ageTrans[ageTrans$socialStat == "SubAdult", c("sex", "low", "high")]
+  for (sa in sal) {
+    if (sa$sex == 'F') {
+      rang <- ageTA[ageTA$sex=='F', 'low']:ageTA[ageTA$sex=='F', 'high']
+      if (length(rang) == 1) sa$ageToAdult <- rang
+      else sa$ageToAdult <- sample(rang, size = 1)
+    }
+    
+    if (sa$sex == 'M') {
+      rang <- ageTA[ageTA$sex=='M', 'low']:ageTA[ageTA$sex=='M', 'high']
+      if (length(rang) == 1) sa$ageToAdult <- rang
+      else sa$ageToAdult <- sample(rang, size = 1)
+    }
+  }
   
     # pull current kittens
   kLits <- llply(iAlive, function (x) if (x$socialStat == 'Kitten') x)
@@ -385,11 +404,11 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
   kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
   
   tsubAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F' & 
-                                                   x$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']) x)
+                                                   x$age > x$ageToAdult) x)
   tsubAdultFAlive <- tsubAdultFAlive[!sapply(tsubAdultFAlive, is.null)]
   
   tsubAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
-                                                   x$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']) x)
+                                                   x$age > x$ageToAdult) x)
   tsubAdultMAlive <- tsubAdultMAlive[!sapply(tsubAdultMAlive, is.null)]
   
   adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
@@ -401,10 +420,20 @@ popClass$methods(stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
     for (k in 1:length(kitsAlive)) {
       kind <- kitsAlive[[k]]
       if (kind$sex == 'F') {
-        if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
-      }
+        if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) {
+          kind$socialStat = "SubAdult" 
+          rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
+          if (length(rang) == 1) kind$ageToAdult <- rang
+          else kind$ageToAdult <- sample(rang, size = 1)
+          }
+        }
       else {
-        if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) kind$socialStat = "SubAdult" 
+        if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) {
+          kind$socialStat = "SubAdult" 
+          rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
+          if (length(rang) == 1) kind$ageToAdult <- rang
+          else kind$ageToAdult <- sample(rang, size = 1)          
+        }
       }
     }
   }
@@ -818,7 +847,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     
     # fill with starting values
     popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput)
+                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
     
     # simulate population
     months <- years * 12
@@ -936,7 +965,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             
             # fill with starting values
             popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput)
+                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
             
             # simulate population
             months <- years * 12

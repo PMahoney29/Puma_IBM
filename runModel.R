@@ -40,7 +40,8 @@ litterProbs$cumProbs <- cumsum(litterProbs$prob)
 
 probFemaleKitt <- 0.5
 senesc <- 15
-minMaleReproAge <- 30  # in months
+#minMaleReproAge <- 42  # in months
+minMaleReproAge <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat=='SubAdult', 'low']
 
 # Sex specific carrying capacity K
 # K <- c(N, prob1, prob2, ...probN); probabilities must sum to 1 across rows
@@ -55,7 +56,7 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 1000
+iter = 10
 years = 50
 numCores <- detectCores() - 1
 
@@ -80,4 +81,4 @@ sim1$summary()
 sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
-matplot2(as.matrix(sim1$pop.size[[3]][[4]][1:10,]))
+matplot2(as.matrix(sim1$pop.size[[2]][[3]][1:100,]))
