@@ -198,7 +198,7 @@ indClass <- setRefClass(
 
 
 ##########################
-##   indClass methods   ##
+##   indClass methods   #
 ##########################
 
   # Print method for individual data

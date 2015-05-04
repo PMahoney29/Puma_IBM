@@ -1,9 +1,9 @@
-############################################################################
+###########################################################################
 #  Individually based model
 #  investigating the genetic consequences of small populations.  
 #  Started - 2/2015
 #  Author: Peter Mahoney, USU PhD Student
-############################################################################
+###########################################################################
 
 #Load required packages
 #library(methods)
