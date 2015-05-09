@@ -1120,18 +1120,29 @@ simClass$methods(summary = function() {
   })
 
   pps <- field('populations')
-  oImm <- aggregate(list(NumImmigrants = pps$immigrant), by = list(PopID = pps$PopID), sum)
-  oImm$rate <- oImm$NumImmigrants / N.years
+  o <- ddply(pps, .(PopID), summarize, Immigrants = sum(immigrant), 
+             ImmRate = sum(immigrant) / years,
+             ReproductiveImm = sum(!is.na(reproHist) & immigrant),
+             ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
   
-  mNum <- mean(oImm$NumImmigrants)
-  ciNum <- HPDinterval(as.mcmc(oImm$NumImmigrants), prob=0.95, na.rm=T) 
-  mRate <- mean(oImm$rate)
-  ciRate <- HPDinterval(as.mcmc(oImm$rate), prob=0.95, na.rm=T) 
-  r1 <- cbind(mean = mNum, lHPDI95 = ciNum[1], uHPDI95 = ciNum[2])
-  r2 <- cbind(mean = mRate, lHPDI95 = ciRate[1], uHPDI95 = ciRate[2])
-  imm <- rbind(r1, r2) 
-  row.names(imm) <- c("Total Immigrants", paste("Immigrant Rate (per ", years, " years)", sep=""))
-
+  mNumImm <- mean(o$Immigrants)
+  ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
+  mImmRate <- mean(o$ImmRate)
+  ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
+  mNumReproImm <- mean(o$ReproductiveImm)
+  ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
+  mImmReproRate <- mean(o$ReproImmRate)
+  ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
+  r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
+  r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
+  r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
+  r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
+  imm <- rbind(r1, r2, r3, r4) 
+  row.names(imm) <- c("Total Immigrants", 
+                            paste("Immigrant Rate (per ", years, " years)", sep=""),
+                            "Total Reproductive Immigrants",
+                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+  
   if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
     # Mean final genetics
     outGen <- data.frame()
@@ -1363,17 +1374,28 @@ simClass$methods(immigrants = function () {
   y <- field('years')
   ps <- field('populations')
   
-  o <- aggregate(list(NumImmigrants = ps$immigrant), by = list(PopID = ps$PopID), sum)
-  o$rate <- o$NumImmigrants / y
+  o <- ddply(ps, .(PopID), summarize, Immigrants = sum(immigrant), 
+             ImmRate = sum(immigrant) / years,
+             ReproductiveImm = sum(!is.na(reproHist) & immigrant),
+             ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
   
-  mNum <- mean(o$NumImmigrants)
-  ciNum <- HPDinterval(as.mcmc(o$NumImmigrants), prob=0.95, na.rm=T) 
-  mRate <- mean(o$rate)
-  ciRate <- HPDinterval(as.mcmc(o$rate), prob=0.95, na.rm=T) 
-  r1 <- cbind(mean = mNum, lHPDI95 = ciNum[1], uHPDI95 = ciNum[2])
-  r2 <- cbind(mean = mRate, lHPDI95 = ciRate[1], uHPDI95 = ciRate[2])
-  o.summary <- rbind(r1, r2) 
-  row.names(o.summary) <- c("Total Immigrants", paste("Immigrant Rate (per ", y, " years)", sep=""))
+  mNumImm <- mean(o$Immigrants)
+  ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
+  mImmRate <- mean(o$ImmRate)
+  ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
+  mNumReproImm <- mean(o$ReproductiveImm)
+  ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
+  mImmReproRate <- mean(o$ReproImmRate)
+  ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
+  r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
+  r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
+  r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
+  r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
+  o.summary <- rbind(r1, r2, r3, r4) 
+  row.names(o.summary) <- c("Total Immigrants", 
+                            paste("Immigrant Rate (per ", years, " years)", sep=""),
+                            "Total Reproductive Immigrants",
+                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
   
   o.list <- list(summary = o.summary, byPop = o)
   return(o.list)
