@@ -1119,6 +1119,19 @@ simClass$methods(summary = function() {
     })
   })
 
+  pps <- field('populations')
+  oImm <- aggregate(list(NumImmigrants = pps$immigrant), by = list(PopID = pps$PopID), sum)
+  oImm$rate <- oImm$NumImmigrants / N.years
+  
+  mNum <- mean(oImm$NumImmigrants)
+  ciNum <- HPDinterval(as.mcmc(oImm$NumImmigrants), prob=0.95, na.rm=T) 
+  mRate <- mean(oImm$rate)
+  ciRate <- HPDinterval(as.mcmc(oImm$rate), prob=0.95, na.rm=T) 
+  r1 <- cbind(mean = mNum, lHPDI95 = ciNum[1], uHPDI95 = ciNum[2])
+  r2 <- cbind(mean = mRate, lHPDI95 = ciRate[1], uHPDI95 = ciRate[2])
+  imm <- rbind(r1, r2) 
+  row.names(imm) <- c("Total Immigrants", paste("Immigrant Rate (per ", years, " years)", sep=""))
+
   if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
     # Mean final genetics
     outGen <- data.frame()
@@ -1186,6 +1199,7 @@ simClass$methods(summary = function() {
               ExtinctionProb = Prob.extinct,
               ExtinctionTime = eTime,
               Pop.size = outSize,
+              Immigrants = imm,
               GeneticComposition = outGen)
   }
   else {
@@ -1199,10 +1213,30 @@ simClass$methods(summary = function() {
                                     row.names = c("Empirical Lambda", "Stochastic Lambda")),
                 ExtinctionProb = Prob.extinct,
                 Pop.size = outSize,
+                Immigrants = imm,
                 GeneticComposition = "No genetic output generated: Check if genOutput = TRUE or if ExtinctionProb = 1")    
   }
   
   out
+})
+
+simClass$methods(pullGenoSummary = function(years, genoMetric) {
+  Y <- paste("Y", years, sep="")
+  o <- list()
+  for (y in Y) {
+    oGen <- data.frame()
+    for (g in genoMetric) {
+      stat <- field(g)$mean[, y]
+      oGen <- rbind(oGen,
+                    cbind(GenoMetric = g, 
+                          mean = mean(stat, na.rm = T), 
+                          se = sd(stat, na.rm = T) / sqrt(length(stat)),
+                          lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+    }
+    o[[y]] <- oGen
+  }
+  return(o)
 })
 
 simClass$methods(plot = function(fieldStat) {
@@ -1325,4 +1359,22 @@ simClass$methods(plot = function(fieldStat) {
   }
 })
 
-
+simClass$methods(immigrants = function () {
+  y <- field('years')
+  ps <- field('populations')
+  
+  o <- aggregate(list(NumImmigrants = ps$immigrant), by = list(PopID = ps$PopID), sum)
+  o$rate <- o$NumImmigrants / y
+  
+  mNum <- mean(o$NumImmigrants)
+  ciNum <- HPDinterval(as.mcmc(o$NumImmigrants), prob=0.95, na.rm=T) 
+  mRate <- mean(o$rate)
+  ciRate <- HPDinterval(as.mcmc(o$rate), prob=0.95, na.rm=T) 
+  r1 <- cbind(mean = mNum, lHPDI95 = ciNum[1], uHPDI95 = ciNum[2])
+  r2 <- cbind(mean = mRate, lHPDI95 = ciRate[1], uHPDI95 = ciRate[2])
+  o.summary <- rbind(r1, r2) 
+  row.names(o.summary) <- c("Total Immigrants", paste("Immigrant Rate (per ", y, " years)", sep=""))
+  
+  o.list <- list(summary = o.summary, byPop = o)
+  return(o.list)
+})

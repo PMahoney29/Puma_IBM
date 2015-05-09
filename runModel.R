@@ -6,16 +6,45 @@
 ###########################################################################
 
 #Load required packages
-#library(methods)
-#library(adegenet)
-#library(plyr)
-#library(popbio)
-#library(Rhh)
-#library(ggplot2)
-#library(parallel)
-#library(foreach)
-#library(doParallel)
 source('classes_IBM.R')
+
+# Functions
+pullGenoSummary <- function(simObj, years, genoMetric) {
+  Y <- paste("Y", years, sep="")
+  o <- list()
+  for (y in Y) {
+    oGen <- data.frame()
+    for (g in genoMetric) {
+      #stat <- field(simObj, g)$mean[, y]
+      stat <- simObj[[g]]$mean[,y]
+      oGen <- rbind(oGen,
+                    cbind(GenoMetric = g, 
+                          mean = mean(stat, na.rm = T), 
+                          se = sd(stat, na.rm = T) / sqrt(length(stat)),
+                          lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
+                          uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+    }
+    o[[y]] <- oGen
+  }
+  return(o)
+}
+immigrants <- function (simObj, years) {
+  ps <- simObj$populations 
+  o <- aggregate(list(NumImmigrants = ps$immigrant), by = list(PopID = ps$PopID), sum)
+  o$rate <- o$NumImmigrants / years
+  
+  mNum <- mean(o$NumImmigrants)
+  ciNum <- HPDinterval(as.mcmc(o$NumImmigrants), prob=0.95, na.rm=T) 
+  mRate <- mean(o$rate)
+  ciRate <- HPDinterval(as.mcmc(o$rate), prob=0.95, na.rm=T) 
+  r1 <- cbind(mean = mNum, lHPDI95 = ciNum[1], uHPDI95 = ciNum[2])
+  r2 <- cbind(mean = mRate, lHPDI95 = ciRate[1], uHPDI95 = ciRate[2])
+  o.summary <- rbind(r1, r2) 
+  row.names(o.summary) <- c("Total Immigrants", paste("Immigrant Rate (per ", years, " years)", sep=""))
+  
+  o.list <- list(summary = o.summary, byPop = o)
+  return(o.list)
+}
 
 # Starting values
 startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
@@ -57,7 +86,7 @@ genOutput <- T
 savePopulations <- T
 verbose <- T
 iter = 10
-years = 50
+years = 25
 numCores <- detectCores() - 1
 
 # Run model in serial
@@ -82,3 +111,30 @@ sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na
 
 # Plot projections
 matplot2(as.matrix(sim1$pop.size[[2]][[3]][1:100,]))
+
+# Pull genetic values for a given year
+    yrs = c(0, 25) #, 50)
+    genoMetric = c("Na",'He', 'Ho')
+
+    # For newer sim objects
+    sim1$pullGenoSummary(yrs, genoMetric)
+
+    # For older sim objects
+    pullGenoSummary(sim1, yrs, genoMetric)
+    
+# Pull immigrant pop data
+    # For newer sim objects
+    sim1$immigrants()
+    sim1$immigrants()$summary
+    sim1$immigrants()$byPop
+      #or
+    sim1$summary()
+    
+    # For older sim objects
+    years = 50         #whatever it is set as for the original simulation (50 in this case
+    immigrants(sim1, years)
+
+
+
+
+
