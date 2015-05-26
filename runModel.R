@@ -70,15 +70,16 @@ immRate <- (1/12) / 12
 immMaleProb <- 1
 
 # Demographics
-surv <- read.csv('./Data/survival//survivalMonthly.csv')
+#surv <- read.csv('./Data/survival//survivalMonthly.csv')
+surv <- read.csv('./Data/survival//survivalMonthlyADJUSTEDFORINBREEDINGDEPRESSION.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
   # Choose only one of the following litterProbs
-litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
-litterProbs$cumProbs <- cumsum(litterProbs$prob)
-#litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
+#litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
 #litterProbs$cumProbs <- cumsum(litterProbs$prob)
+litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
+litterProbs$cumProbs <- cumsum(litterProbs$prob)
 
 probFemaleKitt <- 0.5
 senesc <- 15
@@ -98,7 +99,7 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 10
+iter = 1000
 years = 50
 numCores <- detectCores() - 1
 
@@ -120,10 +121,11 @@ sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = 
 
 # Display summary statistics
 sim1$summary()
-sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
+sim1$plot(fieldStat=c('lambda', 'extinctTime'))
+#sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
-matplot2(as.matrix(sim1$pop.size[[2]][[3]][1:100,]))
+matplot2(as.matrix(sim1$pop.size$All$TotalN[1:100,]))
 
 # Pull genetic values for a given year
     yrs = c(0, 25) #, 50)

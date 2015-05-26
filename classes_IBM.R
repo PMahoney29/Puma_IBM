@@ -661,13 +661,15 @@ popClass$methods(kill = function(surv) {
   alive <- field("indsAlive")
   
   # Assess survival
-  for (i in 1:length(alive)) {
-    ind <- alive[[i]]
-    si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
-    ind$liveStat <- runif(1) <= si
+  if (length(alive) > 0) {
+    for (i in 1:length(alive)) {
+      ind <- alive[[i]]
+      si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
+      ind$liveStat <- runif(1) <= si
     
-    #update mortMon for individual
-    if (ind$liveStat == FALSE) ind$mortMon <- .self$time
+      #update mortMon for individual
+      if (ind$liveStat == FALSE) ind$mortMon <- .self$time
+    }
   }
   
   .self$pullAlive()
@@ -814,10 +816,12 @@ popClass$methods(incremTime = function(senesc) {
   
   # age individuals
   alive <- field("indsAlive")
-  for (i in 1:length(alive)) {
-    alive[[i]]$age <- alive[[i]]$age + 1
-    if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
-  } 
+  if (length(alive) > 0) {
+    for (i in 1:length(alive)) {
+      alive[[i]]$age <- alive[[i]]$age + 1
+      if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
+    }
+  }
   .self$pullAlive()
 })
 
@@ -925,14 +929,17 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
   immPop_subset <- immPop
   
   cSim <- function(s1, s2) {
-
     s1$populations <- rbind(s1$populations, s2$populations)
-    
     for (subP in 1:length(s1$pop.size)) {
       for (stage in 1:length(s1$pop.size[[subP]])) {
         s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
       }
     }
+
+    s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
+    s1$extinct <- c(s1$extinct, s2$extinct)
+    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
+    
     for (stat in 1:length(s1$Na)) {
       s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
     }
@@ -951,13 +958,11 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
     }
     s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
     s1$Ne <- rbind.fill(s1$Ne, s2$Ne)
-    s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
-    s1$extinct <- c(s1$extinct, s2$extinct)
-    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
+    
     return(s1)
   }
 
-  packList <- c('methods', 'adegenet','plyr', 'popbio', 'Rhh')
+  packList <- c('methods','plyr', 'popbio', 'Rhh')
 
   #start cluster
   cl <- makeCluster(numCores)
@@ -1048,7 +1053,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
               out$PropPoly <- NULL
               out$Ne <- NULL
             }
-        return(out)
+            return(out)
           }
   
   #stop cluster
@@ -1108,17 +1113,21 @@ simClass$methods(summary = function() {
     }
   
   # Mean final population size
-  ps <- field('pop.size')
-  outSize <- llply(ps, function (x) {
-    ldply(x, function (y) {
-      y[is.na(y)] <- 0
-      mean <- mean(y[, ncol(y)])
-      se <- sd(y[, ncol(y)]) / sqrt(N.iter)
-      HPDI95 = HPDinterval(as.mcmc(y[, ncol(y)]), prob = 0.95, na.rm = T)
-      return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
+  if ((N.years + 1) == ncol(.self$pop.size$All$Total)) {
+    ps <- field('pop.size')
+    outSize <- llply(ps, function (x) {
+      ldply(x, function (y) {
+        y[is.na(y)] <- 0
+        mean <- mean(y[, ncol(y)])
+        se <- sd(y[, ncol(y)]) / sqrt(N.iter)
+        HPDI95 = HPDinterval(as.mcmc(y[, ncol(y)]), prob = 0.95, na.rm = T)
+        return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
+      })
     })
-  })
+  }
+  else {outSize <- 'Final Population size = 0 since ExtinctionProb = 1'}
 
+  # Immigrant population stats
   pps <- field('populations')
   o <- ddply(pps, .(PopID), summarize, Immigrants = sum(immigrant), 
              ImmRate = sum(immigrant) / years,
@@ -1153,51 +1162,101 @@ simClass$methods(summary = function() {
     Hoi <- .self$Ho$mean[, N.years + 1]
     IRi <- .self$IR$mean[, N.years + 1]
     Fisi <- .self$Fis$mean[, N.years + 1]
-
-    outGen <- rbind(outGen, 
-                    cbind(stat = "Na", 
-                          mean = mean(Nai, na.rm = T), 
-                          se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "Ne", 
-                          mean = mean(Nei, na.rm = T), 
-                          se = sd(Nei, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "PropPoly", 
-                          mean = mean(PropPolyi, na.rm = T), 
-                          se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "He", 
-                          mean = mean(Hei, na.rm = T), 
-                          se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "Ho", 
-                          mean = mean(Hoi, na.rm = T), 
-                          se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "IR", 
-                          mean = mean(IRi, na.rm = T), 
-                          se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
-    outGen <- rbind(outGen, 
-                    cbind(stat = "Fis", 
-                          mean = mean(Fisi, na.rm = T), 
-                          se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                          lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
     
-    row.names(outGen) <- rep(NULL, nrow(outGen))
+    if (length(na.omit(Nai)) > 1) {
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Na", 
+                            mean = mean(Nai, na.rm = T), 
+                            se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Ne", 
+                            mean = mean(Nei, na.rm = T), 
+                            se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "PropPoly", 
+                            mean = mean(PropPolyi, na.rm = T), 
+                            se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "He", 
+                            mean = mean(Hei, na.rm = T), 
+                            se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Ho", 
+                            mean = mean(Hoi, na.rm = T), 
+                            se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "IR", 
+                            mean = mean(IRi, na.rm = T), 
+                            se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Fis", 
+                            mean = mean(Fisi, na.rm = T), 
+                            se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
+                            uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
+    
+      row.names(outGen) <- rep(NULL, nrow(outGen))
+    }
+    
+    else {
+      HPDI95 = 'Inestimable'
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Na", 
+                            mean = mean(Nai, na.rm = T), 
+                            se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Ne", 
+                            mean = mean(Nei, na.rm = T), 
+                            se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "PropPoly", 
+                            mean = mean(PropPolyi, na.rm = T), 
+                            se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "He", 
+                            mean = mean(Hei, na.rm = T), 
+                            se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Ho", 
+                            mean = mean(Hoi, na.rm = T), 
+                            se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "IR", 
+                            mean = mean(IRi, na.rm = T), 
+                            se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      outGen <- rbind(outGen, 
+                      cbind(stat = "Fis", 
+                            mean = mean(Fisi, na.rm = T), 
+                            se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                            lHPDI95 = HPDI95,
+                            uHPDI95 = HPDI95))
+      
+      row.names(outGen) <- rep(NULL, nrow(outGen))      
+    }
   
     out <- list(DateTime = field('Date'), CompTime = field('SimTime'), N.iter = N.iter, N.years = N.years,
               Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
@@ -1214,7 +1273,7 @@ simClass$methods(summary = function() {
               GeneticComposition = outGen)
   }
   else {
-    out <- list(N.iter = N.iter, N.years = N.years,
+    out <- list(DateTime = field('Date'), CompTime = field('SimTime'), N.iter = N.iter, N.years = N.years,
                 Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                     median = c(EmpLambda_median, exp(StochLogLambda_median)),
                                     lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
