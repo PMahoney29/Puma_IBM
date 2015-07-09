@@ -9,7 +9,7 @@
 source('classes_IBM.R')
 
 # Starting values
-startValues <- read.csv('./Data/genotypes/startValues_complete.csv', stringsAsFactors=F)
+startValues <- read.csv('./Data/genotypes/startValuesFINAL.csv', stringsAsFactors=F)
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
 genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 
