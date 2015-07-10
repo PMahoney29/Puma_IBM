@@ -1113,7 +1113,7 @@ simClass$methods(summary = function() {
     }
   
   # Mean final population size
-  if ((N.years + 1) == ncol(.self$pop.size$All$Total)) {
+  if (((N.years * 12) + 1) == ncol(.self$pop.size$All$TotalN)) {
     ps <- field('pop.size')
     outSize <- llply(ps, function (x) {
       ldply(x, function (y) {

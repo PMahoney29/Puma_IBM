@@ -19,8 +19,8 @@ immRate <- (1/12) / 12
 immMaleProb <- 1
 
 # Demographics
-#surv <- read.csv('./Data/survival//survivalMonthly.csv')
-surv <- read.csv('./Data/survival//survivalMonthlyADJUSTEDFORINBREEDINGDEPRESSION.csv')
+surv <- read.csv('./Data/survival//survivalMonthly.csv')
+#surv <- read.csv('./Data/survival//survivalMonthlyADJUSTEDFORINBREEDINGDEPRESSION.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
@@ -44,8 +44,8 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 1000
-years = 50
+iter = 10
+years = 25
 numCores <- detectCores() - 1
 
 # Run model in serial
