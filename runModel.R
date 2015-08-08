@@ -25,7 +25,7 @@ ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
   # Choose only one of the following litterProbs
-litterProbs <- read.csv('./Data/reproduction/litterProb.csv')
+litterProbs <- read.csv('./Data/reproduction/litterProbNEW.csv')
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
 #litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
 #litterProbs$cumProbs <- cumsum(litterProbs$prob)

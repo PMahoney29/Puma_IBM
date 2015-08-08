@@ -41,7 +41,7 @@ newSurv <- function(surv) {
 
 # Generate litter size for COUGARS...needs to be adjusted for other species
 littSize <- function(litterProbs) {
-  if (sum(litterProbs$prob) != 1) 
+  if (signif(sum(litterProbs$prob)) != 1) 
     stop("Litter size probabilities must sum to 1")
   indProb <- runif(1)
   high <- min(which(litterProbs$cumProbs > indProb))
