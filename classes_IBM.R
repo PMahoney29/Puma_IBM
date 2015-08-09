@@ -147,7 +147,7 @@ simClass <- setRefClass(
     pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'logical',
-    extinctTime = 'numeric',
+    extinctTime = 'ANY',  #Change to appropriate numeric with na class
     Na = 'list',
     Ne = 'data.frame',
     PropPoly = 'data.frame',
