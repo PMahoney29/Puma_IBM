@@ -6,10 +6,7 @@
 ############################################################################
 
 ### NEED TO DO:
-## Generate Ne stat...not going to happen, need to output genetic data
-## Add imigration
-## Add flexible K
-## Finish parallel code
+###
 ###
 
 #Load required packages
@@ -147,7 +144,7 @@ simClass <- setRefClass(
     pop.size = 'list',
     lambda = 'data.frame',
     extinct = 'logical',
-    extinctTime = 'ANY',  #Change to appropriate numeric with na class
+    extinctTime = 'numeric',  #Change to appropriate numeric with na class
     Na = 'list',
     Ne = 'data.frame',
     PropPoly = 'data.frame',
@@ -1013,7 +1010,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             out$extinct <- popi$extinct
             if (out$extinct)
               out$extinctTime <- popi$time / 12
-            else {out$extinctTime <- NULL}
+            else {out$extinctTime <- NA}
             
             if (genOutput) {
               out$Na$mean <- popi$Na[1, ]
