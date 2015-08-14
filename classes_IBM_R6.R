@@ -235,7 +235,6 @@ simClass <- R6Class('simClass',
                        if (popi$extinct == TRUE) break
                      }
                      
-                     #if (savePopulations == TRUE) sim1$field("populations", append(sim1$field("populations"), list(popi)))
                      out <- list()
                      if (savePopulations == TRUE) {
                        out$populations <- cbind(PopID = popi$popID, popi$tabAll())
@@ -528,7 +527,6 @@ simClass <- R6Class('simClass',
     },
     
     plot = function(fieldStat) {
-      #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
       if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'Ne', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
       
       for (p in 1:length(fieldStat)) {
