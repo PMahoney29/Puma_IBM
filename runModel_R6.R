@@ -20,20 +20,16 @@ immMaleProb <- 1
 
 # Demographics
 surv <- read.csv('./Data/survival//survivalMonthly.csv')
-#surv <- read.csv('./Data/survival//survivalMonthlyADJUSTEDFORINBREEDINGDEPRESSION.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
   # Choose only one of the following litterProbs
 litterProbs <- read.csv('./Data/reproduction/litterProbNEW.csv')
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
-#litterProbs <- read.csv('./Data/reproduction/PantherLitterProb.csv')
-#litterProbs$cumProbs <- cumsum(litterProbs$prob)
 
 probFemaleKitt <- 0.5
 senesc <- 15
 minMaleReproAge <- 36  # in months
-#minMaleReproAge <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat=='SubAdult', 'low']
 
 # Sex specific carrying capacity K
 Kf <- matrix(c(6, 1, 0), nrow=1)
@@ -79,8 +75,6 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:100,]))
     # For newer sim objects
     sim1$pullGenoSummary(yrs, genoMetric)
 
-    # For older sim objects
-    pullGenoSummary(sim1, yrs, genoMetric)
     
 # Pull immigrant pop data
     # For newer sim objects
@@ -89,13 +83,3 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:100,]))
     sim1$immigrants()$byPop
       #or
     sim1$summary()
-    
-    # For older sim objects
-    years = 50         #whatever it is set as for the original simulation (50 in this case
-    imm <- immigrants(sim1, years)
-    imm$summary
-    imm$byPop
-
-
-
-
