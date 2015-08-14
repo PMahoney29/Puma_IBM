@@ -155,44 +155,179 @@ simClass <- setRefClass(
     Fis = 'list'
   ))
 
-popClass <- setRefClass(
-  Class = 'popClass',
-  fields = list(
-    popID = 'character',
-    indsAll = 'list',
-    indsAlive = 'list',
-    activeLitters = 'list',
-    time = 'numeric',
-    pop.size = 'list',
-    lambda = 'data.frame',
-    extinct = 'logical',
-    Na = 'data.frame',
-    Ne = 'data.frame',
-    PropPoly = 'data.frame',
-    He = 'data.frame',
-    Ho = 'data.frame',
-    IR = 'data.frame',
-    Fis = 'data.frame'
-  ))
+popClass <- R6Class('popClass',
+  public = list(
+    popID = NA,
+    indsAll = NA,
+    indsAlive = NA,
+    activeLitters = NA,
+    time = 0,
+    pop.size = NA,
+    lambda = NA,
+    extinct = FALSE,
+    Na = NA,
+    Ne = NA,
+    PropPoly = NA,
+    He = NA,
+    Ho = NA,
+    IR = NA,
+    Fis = NA,
+    
+    initialize = function(pID) {
+      self$popID <- pID
+    },
+    
+    startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
+      sv <- startValues
+      #field('extinct', FALSE)
+      self$pop.size <- list(Females = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
+                             Males = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
+                             All = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")))
+      self$Na <- data.frame(Y0 = c(0,0), row.names=c("mean", "SE"))
+      self$Ne <- data.frame(Y0 = c(0))
+      self$He <- data.frame(Y0 = c(0,0), row.names=c("mean", "SE"))
+      self$Ho <- data.frame(Y0 = c(0,0), row.names=c("mean", "SE"))
+      self$IR <- data.frame(Y0 = c(0,0), row.names=c("mean", "SE"))
+      self$Fis <- data.frame(Y0 = c(0,0), row.names=c("mean", "SE"))
+      self$lambda <- data.frame(Y0 = c(0))
+      self$PropPoly <- data.frame(Y0 = c(0))
+      self$indsAll <- list()
+      self$indsAlive <- list()
+      
+      # Instantiate individuals
+      for (r in 1:nrow(sv)) {
+        ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
+                            reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
+                            genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
+        self$addToPop(ind)
+      }
+      self$pullAlive()
+      
+      # Identify active litters
+      iAlive <- self$indsAlive
+      aLit <- list() 
+      
+      # pull subAdults
+      sal <- llply(iAlive, function (x) if (x$socialStat == 'SubAdult') x)
+      sal <- sal[!sapply(sal, is.null)]
+      ageTA <- ageTrans[ageTrans$socialStat == "SubAdult", c("sex", "low", "high")]
+      for (sa in sal) {
+        if (sa$sex == 'F') {
+          rang <- ageTA[ageTA$sex=='F', 'low']:ageTA[ageTA$sex=='F', 'high']
+          if (length(rang) == 1) sa$ageToAdult <- rang
+          else sa$ageToAdult <- sample(rang, size = 1)
+        }
+        
+        if (sa$sex == 'M') {
+          rang <- ageTA[ageTA$sex=='M', 'low']:ageTA[ageTA$sex=='M', 'high']
+          if (length(rang) == 1) sa$ageToAdult <- rang
+          else sa$ageToAdult <- sample(rang, size = 1)
+        }
+      }
+      
+      # pull current kittens
+      kLits <- llply(iAlive, function (x) if (x$socialStat == 'Kitten') x)
+      kLits <- kLits[!sapply(kLits, is.null)]  
+      # determine mothers
+      mo <- unique(unlist(llply(kLits, function(x) x$mother)))
+      for (m in mo) {
+        mother <- llply(iAlive, function(x) if (x$animID == m) x)
+        mother <- mother[!sapply(mother, is.null)]
+        
+        kits <- llply(iAlive, function(x) if (x$mother == m) x)
+        kits <- kits[!sapply(kits, is.null)]
+        
+        newLitter <- list(mother = mother[[1]], kittens = kits, gestation = 0)
+        aLit <- append(aLit, list(newLitter))
+      }
+      
+      self$activeLitters <- aLit
+      
+      # Update stats
+      #.self$updateStats(genOutput)
+    },
+    
+    addToPop = function(individual) {
+      self$indsAll <- append(self$indsAll, individual)
+    },
+    
+    pullAlive = function() {
+      alive <- llply(self$indsAll, function(x) if (x$liveStat==TRUE) x)
+      alive <- alive[!sapply(alive, is.null)]  
+      self$indsAlive <- alive
+    },
+    
+    tabAll = function() {
+      dat <- self$indsAll
+      out <- c()
+      for (r in 1:length(dat)) {
+        out = rbind(out, dat[[r]]$tab())
+      }
+      out
+    },
+    
+    tabAlive = function() {
+      dat <- self$indsAlive
+      if (length(dat)==0) stop('No individuals are listed as alive.')
+      out <- c()
+      for (r in 1:length(dat)) {
+        out = rbind(out, dat[[r]]$tab())
+      }
+      out
+    }
+))
 
-indClass <- setRefClass(
-  Class = 'indClass',
-  fields = list(
-    animID = 'character',
-    sex = 'character',
-    age = 'numeric',
-    mother = 'character',
-    father = 'character',
-    socialStat = 'character',
-    ageToAdult = 'numeric',
-    reproStat = 'logical',
-    reproHist = 'character',   ## another way of handling??
-    liveStat = 'logical',
-    censored = 'logical',
-    birthMon = 'numeric',
-    mortMon = 'numeric',
-    immigrant = 'logical',
-    genotype = 'data.frame'))
+indClass <- R6Class('indClass',
+  public = list(
+    animID = NA,
+    sex = NA,
+    age = NA,
+    mother = NA,
+    father = NA,
+    socialStat = NA,
+    ageToAdult = NA,
+    reproStat = FALSE,
+    reproHist = NA,
+    liveStat = TRUE,
+    censored = FALSE,
+    birthMon = NA,
+    mortMon = NA,
+    immigrant = FALSE,
+    genotype = NA,
+    
+    ## Methods
+    initialize = function(animID, sex, age, mother, father, socialStat, ageToAdult, reproStat, reproHist, liveStat, censored, 
+                          birthMon, mortMon, immigrant, genotype) {
+      if (!missing(animID)) self$animID <- animID
+      if (!missing(sex)) self$sex <- sex
+      if (!missing(age)) self$age <- age
+      if (!missing(mother)) self$mother <- mother
+      if (!missing(father)) self$father <- father
+      if (!missing(socialStat)) self$socialStat <- socialStat
+      if (!missing(ageToAdult)) self$ageToAdult <- ageToAdult
+      if (!missing(reproStat)) self$reproStat <- reproStat
+      if (!missing(reproHist)) self$reproHist <- reproHist
+      if (!missing(liveStat)) self$liveStat <- liveStat
+      if (!missing(censored)) self$censored <- censored
+      if (!missing(birthMon)) self$birthMon <- birthMon
+      if (!missing(mortMon)) self$mortMon <- mortMon
+      if (!missing(immigrant)) self$immigrant <- immigrant
+      if (!missing(genotype)) self$genotype <- genotype},
+    
+    tab = function(...) {
+      return(data.frame(animID = self$animID, sex = self$sex, age = self$age, mother = self$mother, father = self$father,
+                        socialStat = self$socialStat, ageToAdult = self$ageToAdult, reproStat = self$reproStat,
+                        reproHist = self$reproHist, liveStat = self$liveStat, censored = self$censored, birthMon = self$birthMon,
+                        mortMon = self$mortMon, immigrant = self$immigrant, self$genotype))
+    }
+    
+    ))
+
+#### TEST CODE  ###########
+ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
+                    reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
+                    genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
+##########################
 
 
 ##########################
@@ -200,31 +335,31 @@ indClass <- setRefClass(
 ##########################
 
   # Print method for individual data
-indClass$methods(tab = function() {
-  fields <- names(.refClassDef@fieldClasses)
-  out <- data.frame()
-  for (fi in fields) {
-    #####  Will need to fix depending on what I decide to do with genind() object classes
-    if (class(field(fi))=='data.frame') {
-      #g <- c(field(fi), sep = " ")
-      #out[1,fi] <- do.call(paste, g)
-      out <- cbind(out, field(fi))
-    }
-    else {out[1,fi] <- field(fi)}
-  }
-  out
- })
+#indClass$methods(tab = function() {
+#  fields <- names(.refClassDef@fieldClasses)
+#  out <- data.frame()
+#  for (fi in fields) {
+#    #####  Will need to fix depending on what I decide to do with genind() object classes
+#    if (class(field(fi))=='data.frame') {
+#      #g <- c(field(fi), sep = " ")
+#      #out[1,fi] <- do.call(paste, g)
+#      out <- cbind(out, field(fi))
+#    }
+#    else {out[1,fi] <- field(fi)}
+#  }
+#  out
+# })
 
   # Add method for including individual data to popClass object
-indClass$methods(addToPop = function(popName) {
-  if(class(popName)[1] != "popClass") 
-    stop("Population object must be of class : 'popClass'")
+#indClass$methods(addToPop = function(popName) {
+#  if(class(popName)[1] != "popClass") 
+#    stop("Population object must be of class : 'popClass'")
 
   ## need to test for unique names
   
   # extending the list of individuals
-  popName$indsAll <- append(popName$indsAll, .self)
-})
+#  popName$indsAll <- append(popName$indsAll, .self)
+#})
 
   # Add method for female reproduction.  Number of kittens needs to be generated in advance...
 indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames, population) {
@@ -299,7 +434,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
 ##   popClass methods   ##
 ##########################
 
-popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
+#popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
   sv <- startValues
   field('extinct', FALSE)
   field('pop.size', list(Females = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
@@ -368,7 +503,7 @@ popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, 
 })
 
   # View individual data (tabulated ~ data.frame)
-popClass$methods(tabIndsAll = function() {
+#popClass$methods(tabIndsAll = function() {
   dat <- field('indsAll')
   out <- c()
   for (r in 1:length(dat)) {
@@ -387,7 +522,7 @@ popClass$methods(tabAlive = function() {
 })
 
   # Pull the live individuals and store in popClass$indsAlive
-popClass$methods(pullAlive = function() {
+#popClass$methods(pullAlive = function() {
   #alive <- llply(pop1$indsAll, function(x) if (x$liveStat==TRUE) x)
   alive <- llply(field('indsAll'), function(x) if (x$liveStat==TRUE) x)
   alive <- alive[!sapply(alive, is.null)]  
@@ -854,7 +989,7 @@ simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCo
     if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
     
     # new instances of popClass
-    popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
+    popi <- popClass$new(pID = paste('Population_', i, sep=""))
     
     # fill with starting values
     popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
