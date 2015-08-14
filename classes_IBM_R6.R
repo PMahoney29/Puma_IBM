@@ -166,9 +166,9 @@ simClass <- R6Class('simClass',
       immPop_subset <- immPop
       
       # Set-up list structure for outputs stats
-      self$pop.size <- list(Females = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
-                             Males = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
-                             All = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()))
+      self$pop.size <- list(Females = list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()),
+                             Males = list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()),
+                             All = list(kittens = c(), SubAdults = c(), Adults = c(), TotalN = c()))
       self$Na <- list(mean = c(), se = c())
       self$He <- list(mean = c(), se = c())
       self$Ho <- list(mean = c(), se = c())

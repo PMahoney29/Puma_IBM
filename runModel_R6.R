@@ -40,7 +40,7 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 6
+iter = 3
 years = 25
 numCores <- detectCores() - 1
 
@@ -71,8 +71,6 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:100,]))
 # Pull genetic values for a given year
     yrs = c(0, 25) #, 50)
     genoMetric = c("Na",'He', 'Ho')
-
-    # For newer sim objects
     sim1$pullGenoSummary(yrs, genoMetric)
 
     
