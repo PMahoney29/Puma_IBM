@@ -244,7 +244,7 @@ popClass <- R6Class('popClass',
       self$activeLitters <- aLit
       
       # Update stats
-      #.self$updateStats(genOutput)
+      self$updateStats(genOutput)
     },
     
     addToPop = function(individual) {
@@ -274,6 +274,428 @@ popClass <- R6Class('popClass',
         out = rbind(out, dat[[r]]$tab())
       }
       out
+    },
+    
+    updateStats = function (genoutput) {
+      # pull living individuals
+      iAlive <- self$indsAlive
+    
+      # update population size
+      op <- list()
+      of <- matrix(0, nrow = 4, ncol=1, byrow = F)
+      of[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='F'))))
+      of[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='F'))))
+      of[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='F'))))
+      of[4,1] <- sum(of[1:3,1])
+      op$Females <- of
+    
+      om <- matrix(0, nrow = 4, ncol=1, byrow = F)
+      om[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='M'))))
+      om[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='M'))))
+      om[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='M'))))
+      om[4,1] <- sum(om[1:3,1])
+      op$Males <- om
+    
+      ot <- matrix(0, nrow = 4, ncol=1, byrow = F)
+      ot[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
+      ot[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
+      ot[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
+      ot[4,1] <- sum(ot[1:3,1])
+      op$All <- ot
+    
+      for (subP in 1:length(self$pop.size)) {
+        self$pop.size[[subP]][, paste("M", self$time, sep="")] <- op[[subP]]
+      }
+    
+      # update extinction
+      if (op$All[4, 1] <= 1) field('extinct', TRUE)
+      else {
+        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) field('extinct', TRUE)
+        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) field('extinct', TRUE)
+      }
+    
+      if ((self$time/12)%%1 == 0) {
+        # Assign year for field names
+        year <- paste("Y", self$time/12, sep = "")
+        
+        # lambda
+        if (self$time == 0) self$lambda[, year] <- 1
+        else {self$lambda[, year] <- self$pop.size$All[nrow(self$pop.size$All), ncol(self$pop.size$All)] / self$pop.size$All[nrow(self$pop.size$All), ncol(self$pop.size$All) - 12]}
+      
+        if (genOutput) {
+          ### Genetic metrics
+          g <- pullGenos(iAlive)
+          g_genind <- df2genind(createGenInput(g), sep="_")
+        
+          if (Sys.info()[[1]] == 'Windows') sink('NUL')
+          else {sink('aux')}
+          sumGind <- summary(g_genind)
+          g_genpop <- genind2genpop(g_genind, pop = rep(self$popID, nrow(g)))
+          sink(NULL)
+        
+          # Allelic richness Na
+          self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
+      
+          # Ne
+          if (year == 'Y0') {
+            fem <- llply(iAlive, function (x) if (x$sex == 'F' & x$socialStat == 'Adult') x)
+            fem <- length(fem[!sapply(fem, is.null)])
+            mal <- llply(iAlive, function (x) if (x$sex == 'M' & x$socialStat == 'Adult') x)
+            mal <- length(mal[!sapply(mal, is.null)]) 
+            self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
+          }
+          else {
+            fem <- llply(iAlive, function (x) if (x$sex == 'F' & grepl(':', x$reproHist) >= 1) x)
+            fem <- length(fem[!sapply(fem, is.null)])
+            mal <- llply(iAlive, function (x) if (x$sex == 'M' & grepl(':', x$reproHist) >= 1) x)
+            mal <- length(mal[!sapply(mal, is.null)]) 
+            self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
+          }
+        
+          # Proportion of alleles polymorphic
+          self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
+        
+          # Expected heterozygosity He and Ho
+          Hexp <- sumGind$Hexp
+          Hobs <- sumGind$Hobs
+          self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
+          self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
+        
+          # Individual heterozygosity IR
+          self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
+        
+          # Inbreeding coefficient Fis
+          Fis_ind <- sapply(inbreeding(g_genind, N=50), mean)
+          self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
+        }
+      }
+    },
+    
+    addImmigrants = function(iP, immMaleProb, ageTrans) {
+      ro <- sample(1:nrow(iP), size = 1)
+      
+      # Pull geno and create new ID
+      newgeno <- iP[ro, -c(1:2)]
+      newID <- paste('iid', (length(self$indsAll) + 1), sep="")
+      
+      # Determine sex and age of immigrant
+      if (runif(1) <= immMaleProb) {
+        sex <- 'M'
+        age <- round(runif(1, min=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age'],
+                           max=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']))
+        rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
+        if (length(rang) == 1) ata <- rang
+        else ata <- sample(rang, size = 1)   
+      }
+      else {
+        sex <- 'F'
+        age <- round(runif(1, min=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age'],
+                           max=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']))
+        rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
+        if (length(rang) == 1) ata <- rang
+        else ata <- sample(rang, size = 1)
+      }
+      
+      # Create new immigrant and add to population
+      imm <- indClass$new(animID=newID, sex=sex, age=age, mother=as.character(NA), father=as.character(NA), 
+                          socialStat="SubAdult", reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
+                          birthMon=self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE, ageToAdult=ata)
+      self$addToPop(imm)
+      
+      # Update living populations
+      self$pullAlive()
+      
+      # Return subset of immigrant populations
+      return(iP[-ro, ])
+    },
+    
+    stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
+      iAlive <- self$indsAlive
+      
+      kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
+      kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
+      
+      tsubAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F' & 
+                                                       x$age > x$ageToAdult) x)
+      tsubAdultFAlive <- tsubAdultFAlive[!sapply(tsubAdultFAlive, is.null)]
+      
+      tsubAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
+                                                       x$age > x$ageToAdult) x)
+      tsubAdultMAlive <- tsubAdultMAlive[!sapply(tsubAdultMAlive, is.null)]
+      
+      adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
+      adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
+      adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
+      adultMalesAlive <- adultMalesAlive[!sapply(adultMalesAlive, is.null)]
+      
+      if (length(kitsAlive) > 0) {
+        for (k in 1:length(kitsAlive)) {
+          kind <- kitsAlive[[k]]
+          if (kind$sex == 'F') {
+            if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) {
+              kind$socialStat = "SubAdult" 
+              rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
+              if (length(rang) == 1) kind$ageToAdult <- rang
+              else kind$ageToAdult <- sample(rang, size = 1)
+            }
+          }
+          else {
+            if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) {
+              kind$socialStat = "SubAdult" 
+              rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
+              if (length(rang) == 1) kind$ageToAdult <- rang
+              else kind$ageToAdult <- sample(rang, size = 1)          
+            }
+          }
+        }
+      }
+      
+      if (length(tsubAdultFAlive) > 0) {
+        adF <- length(adultFemalesAlive)
+        
+        # Determine the K for the month
+        if (adF < Kf[1, 1]) {
+          rown <- which(runif(1) <= cumsum(Kf[1, -1]))
+          kf <- Kf[rown[1], 1]
+        }    
+        else {
+          rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
+          kf <- Kf[rown[1], 1]
+        }
+        
+        # Identify the allowed space
+        allowF <- kf - adF
+        
+        # If reduction in K, remove adults
+        if (allowF < 0) {
+          numRemove <- abs(allowF) 
+          for (nR in 1:numRemove) {
+            ages <- unlist(llply(adultFemalesAlive, function(x) x$age))
+            toRemove <- which(ages == min(ages))
+            if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+            adultFemalesAlive[[toRemove]]$liveStat <- FALSE
+            adultFemalesAlive[[toRemove]]$mortMon <- self$time
+            adultFemalesAlive <- adultFemalesAlive[[-toRemove]]
+          }
+        }
+        
+        # If no space available, kill off subAdult females of the appropriate age
+        if (allowF <= 0) {
+          invisible(llply(tsubAdultFAlive, function (x) {
+            x$liveStat <- FALSE
+            x$mortMon <- self$time
+            x$censored <- TRUE
+          }))
+        }
+        
+        # Else if space is available, sample subAdult females of the appropriate age
+        else {
+          sampF.size <- min(length(tsubAdultFAlive), allowF)
+          samp <- sample(1:length(tsubAdultFAlive), size = sampF.size)
+          invisible(llply(tsubAdultFAlive[samp], function(x) {
+            x$socialStat = 'Adult'
+            x$reproStat = TRUE
+          }))
+          invisible(llply(tsubAdultFAlive[-samp], function(x) {
+            x$liveStat = FALSE
+            x$mortMon <- self$time
+            x$censored <- TRUE
+          }))
+        }
+      }
+      
+      if (length(tsubAdultMAlive) > 0) {
+        adM <- length(adultMalesAlive)
+        
+        # Determine the K for the month
+        if (adM < Km[1, 1]) {
+          rown <- which(runif(1) <= cumsum(Km[1, -1]))
+          km <- Km[rown[1], 1]
+        }
+        else {
+          rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
+          km <- Km[rown[1], 1]
+        }
+        
+        # Identify the allowed space
+        allowM <- km - adM
+        
+        # If reduction in K, remove adults
+        if (allowM < 0) {
+          numRemove <- abs(allowM) 
+          for (nR in 1:numRemove) {
+            ages <- unlist(llply(adultMalesAlive, function(x) x$age))
+            toRemove <- which(ages == min(ages))
+            if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+            adultMalesAlive[[toRemove]]$liveStat <- FALSE
+            adultMalesAlive[[toRemove]]$mortMon <- self$time
+            adultMalesAlive <- adultMalesAlive[[-toRemove]]
+          }
+        }
+        
+        # If no space available, kill off subAdult males of the appropriate age
+        if (allowM <= 0) {
+          invisible(llply(tsubAdultMAlive, function (x) {
+            x$liveStat <- FALSE
+            x$mortMon <- self$time
+            x$censored <- TRUE
+          }))
+        }
+        
+        # Else if there is space, sample subAdult males of the appropriate age
+        else {
+          sampM.size <- min(length(tsubAdultMAlive), allowM)
+          samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
+          invisible(llply(tsubAdultMAlive[samp], function(x) {
+            x$socialStat = 'Adult'
+            x$reproStat = TRUE
+          }))
+          invisible(llply(tsubAdultMAlive[-samp], function(x) {
+            x$liveStat = FALSE
+            x$mortMon <- self$time
+            x$censored <- TRUE
+          }))
+        }
+      }
+      
+      #  If now adult or subadult males of the appropriate age, allow younger males to move up
+      if (length(tsubAdultMAlive) == 0 & length(adultMalesAlive) == 0) {
+        tsaMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
+                                                   x$age >= minMaleReproAge) x)
+        tsaMAlive <- tsaMAlive[!sapply(tsaMAlive, is.null)]
+        
+        if (length(tsaMAlive) > 0) {
+          rown <- which(runif(1) <= cumsum(Km[1, -1]))
+          allowM <- Km[rown[1], 1]
+          sampM.size <- min(length(tsaMAlive), allowM)
+          samp <- sample(1:length(tsaMAlive), size = sampM.size)
+          invisible(llply(tsaMAlive[samp], function(x) {
+            x$socialStat = 'Adult'
+            x$reproStat = TRUE
+          }))
+        }
+      }
+      
+      self$pullAlive()
+    },
+    
+    updateBreedStat = function(ageTrans) {
+      aL <- self$activeLitters
+      
+      # Adjust litters based on mortality of mother
+      if (length(aL) > 0 ) {
+        for (l in length(aL):1) {
+          if (aL[[l]]$mother$liveStat == FALSE) {
+            # kill any remaining kittens
+            if (length(aL[[l]]$kittens) > 0) {
+              for (ks in 1:length(aL[[l]]$kittens)) {
+                if (aL[[l]]$kittens[[ks]]$age < 12) {
+                  aL[[l]]$kittens[[ks]]$liveStat <- FALSE
+                  aL[[l]]$kittens[[ks]]$mortMon <- self$time
+                }
+                else {
+                  aL[[l]]$kittens[[ks]]$socialStat <- 'SubAdult'
+                  rang <- ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'high']
+                  if (length(rang) == 1) aL[[l]]$kittens[[ks]]$ageToAdult <- rang
+                  else aL[[l]]$kittens[[ks]]$ageToAdult <- sample(rang, size = 1)  
+                }
+              }
+            }
+            
+            # remove litters
+            aL[[l]] <- NULL
+          }
+          
+          else {
+            # change female reproductive status after gestation
+            if (aL[[l]]$gestation >= 3) {
+              aL[[l]]$mother$reproStat <- TRUE  
+              aL[[l]] <- NULL
+            }
+            
+            else {
+              if (length(aL[[l]]$kittens) > 0) {
+                for (k in length(aL[[l]]$kittens):1) {
+                  # Pulling dead kittens or dispersed kittens (SubAdults)
+                  if (aL[[l]]$kittens[[k]]$liveStat == FALSE | aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
+                }
+                
+                #increment gestation
+                if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+              }
+              
+              else {
+                #increment gestation
+                aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
+              }
+            }
+          }
+        }
+        self$activeLitters <- aL
+      }
+    },
+    
+    reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames) {
+      # Generate monthly probability of breeding
+      tPB <- betaval(probBreed$prob, probBreed$se)
+      
+      # Pull reproductive adults
+      f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      #f_alive <- llply(popi$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      #m_alive <- llply(popi$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      f_alive <- f_alive[!sapply(f_alive, is.null)]  
+      m_alive <- m_alive[!sapply(m_alive, is.null)]  
+      
+      #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
+      if (length(f_alive) != 0 & length(m_alive) != 0) {
+        for (f in length(f_alive):1) {
+          if (runif(1) <= tPB) {
+            # Select male mate
+            mate <- sample(m_alive, size = 1)
+            
+            # Generate number of kitts
+            numKitts <- littSize(litterProbs)
+            
+            # Breed
+            #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
+            f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, self)
+          }
+        }
+      }
+    },
+    
+    kill = function(surv) {
+      tSurv <- newSurv(surv)
+      alive <- self$indsAlive
+      
+      # Assess survival
+      if (length(alive) > 0) {
+        for (i in 1:length(alive)) {
+          ind <- alive[[i]]
+          si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
+          ind$liveStat <- runif(1) <= si
+          
+          #update mortMon for individual
+          if (ind$liveStat == FALSE) ind$mortMon <- self$time
+        }
+      }
+      
+      self$pullAlive()
+    },
+    
+    incremTime = function(senesc) {
+      self$time <- self$time + 1
+      
+      # age individuals
+      alive <- self$indsAlive
+      if (length(alive) > 0) {
+        for (i in 1:length(alive)) {
+          alive[[i]]$age <- alive[[i]]$age + 1
+          if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
+        }
+      }
+      self$pullAlive()
     }
 ))
 
@@ -319,645 +741,73 @@ indClass <- R6Class('indClass',
                         socialStat = self$socialStat, ageToAdult = self$ageToAdult, reproStat = self$reproStat,
                         reproHist = self$reproHist, liveStat = self$liveStat, censored = self$censored, birthMon = self$birthMon,
                         mortMon = self$mortMon, immigrant = self$immigrant, self$genotype))
-    }
+    },
     
-    ))
-
-#### TEST CODE  ###########
-ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
-                    reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                    genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
-##########################
-
-
-##########################
-##   indClass methods   #
-##########################
-
-  # Print method for individual data
-#indClass$methods(tab = function() {
-#  fields <- names(.refClassDef@fieldClasses)
-#  out <- data.frame()
-#  for (fi in fields) {
-#    #####  Will need to fix depending on what I decide to do with genind() object classes
-#    if (class(field(fi))=='data.frame') {
-#      #g <- c(field(fi), sep = " ")
-#      #out[1,fi] <- do.call(paste, g)
-#      out <- cbind(out, field(fi))
-#    }
-#    else {out[1,fi] <- field(fi)}
-#  }
-#  out
-# })
-
-  # Add method for including individual data to popClass object
-#indClass$methods(addToPop = function(popName) {
-#  if(class(popName)[1] != "popClass") 
-#    stop("Population object must be of class : 'popClass'")
-
-  ## need to test for unique names
-  
-  # extending the list of individuals
-#  popName$indsAll <- append(popName$indsAll, .self)
-#})
-
-  # Add method for female reproduction.  Number of kittens needs to be generated in advance...
-indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames, population) {
-  if(field('sex') != "F")
-    stop("Input mother is not Female")
-  if(field('liveStat') != TRUE)
-    stop("Input mother is not alive and cannot reproduce!")
-  if(field('reproStat') != TRUE)
-    stop("Input mother is not reproductive")
-  
-  if(male$field('sex') != "M")
-    stop("Input father is not male")
-  if(male$field('liveStat') != TRUE)
-    stop("Input father is not alive and cannot reproduce!")
-  if(male$field('reproStat') != TRUE)
-    stop("Input father is not reproductive")
-
-  pop <- length(population$indsAll)
-  
-  # Generate new individuals
-    # Determine IDs
-  idKitt <- paste('sid', seq(pop + 1, pop + numKittens), sep = "")
-  
-    # Determine sex
-  sexKitt <- runif(numKittens, min = 0, max = 1) <= probFemaleKitt
-  sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
-  
-    # Determine genotype...completely random following Mendelian principles
-  gts <- rbind(field('genotype'), male$genotype)
-
-  genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
-  for (l in 1:length(lociNames)) {
-    cols <- grep(lociNames[l], names(gts))
-    genoKitt[, cols] <- apply(gts[, cols], 1, function (x) sample(x, size = numKittens, replace = TRUE))
-  }
-  genoKitt <- as.data.frame(genoKitt)
-  names(genoKitt) <- names(gts)
-  
-    # Determine birth month
-  bm <- population$time
-  
-    # Loop new individuals
-  kittens <- list()
-  for (k in 1:numKittens) {
-    # gen Individual
-    ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=field("animID"), father=male$field("animID"), socialStat="Kitten", 
-                        reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                        birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE, ageToAdult=as.numeric(NA))
-
-    # add to population
-    ind$addToPop(population) 
-    kittens <- append(kittens, ind)
-  }
-  
-  # update individuals alive
-  population$pullAlive()
-  
-  # update activeLitters
-  population$activeLitters <- append(population$activeLitters, 
-                                    list(list(mother=.self, kittens = kittens, gestation = 0)))
-                                    
-  # Update reproHist and reproStat for mother and father
-  field("reproStat", FALSE)
-  field("reproHist", paste(field("reproHist"), numKittens, sep=":"))
-  male$field("reproHist", paste(male$field("reproHist"), numKittens, sep=":"))
-  #male$field("reproStat", FALSE)
-})
-
-
-
-##########################
-##   popClass methods   ##
-##########################
-
-#popClass$methods(startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
-  sv <- startValues
-  field('extinct', FALSE)
-  field('pop.size', list(Females = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
-                         Males = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total")),
-                         All = data.frame(M0 = c(0,0,0,0), row.names=c("Kittens", "SubAdults", "Adults", "Total"))))
-  field('Na', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('Ne', data.frame(Y0 = c(0)))
-  field('He', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('Ho', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('IR', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('Fis', data.frame(Y0 = c(0,0), row.names=c("mean", "SE")))
-  field('lambda', data.frame(Y0 = c(0)))
-  field('PropPoly', data.frame(Y0 = c(0)))
-  
-  # Instantiate individuals
-  for (r in 1:nrow(sv)) {
-    ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
-                        reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                        genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
-    ind$addToPop(.self)
-  }
-  .self$pullAlive()
-  
-  # Identify active litters
-  iAlive <- field('indsAlive')
-  aLit <- list() 
-  
-    # pull subAdults
-  sal <- llply(iAlive, function (x) if (x$socialStat == 'SubAdult') x)
-  sal <- sal[!sapply(sal, is.null)]
-  ageTA <- ageTrans[ageTrans$socialStat == "SubAdult", c("sex", "low", "high")]
-  for (sa in sal) {
-    if (sa$sex == 'F') {
-      rang <- ageTA[ageTA$sex=='F', 'low']:ageTA[ageTA$sex=='F', 'high']
-      if (length(rang) == 1) sa$ageToAdult <- rang
-      else sa$ageToAdult <- sample(rang, size = 1)
-    }
-    
-    if (sa$sex == 'M') {
-      rang <- ageTA[ageTA$sex=='M', 'low']:ageTA[ageTA$sex=='M', 'high']
-      if (length(rang) == 1) sa$ageToAdult <- rang
-      else sa$ageToAdult <- sample(rang, size = 1)
-    }
-  }
-  
-    # pull current kittens
-  kLits <- llply(iAlive, function (x) if (x$socialStat == 'Kitten') x)
-  kLits <- kLits[!sapply(kLits, is.null)]  
-    # determine mothers
-  mo <- unique(unlist(llply(kLits, function(x) x$mother)))
-  for (m in mo) {
-   mother <- llply(iAlive, function(x) if (x$animID == m) x)
-   mother <- mother[!sapply(mother, is.null)]
-   
-   kits <- llply(iAlive, function(x) if (x$mother == m) x)
-   kits <- kits[!sapply(kits, is.null)]
-   
-   newLitter <- list(mother = mother[[1]], kittens = kits, gestation = 0)
-   aLit <- append(aLit, list(newLitter))
-  }
-  
-  .self$activeLitters <- aLit
-  
-  # Update stats
-  .self$updateStats(genOutput)
-})
-
-  # View individual data (tabulated ~ data.frame)
-#popClass$methods(tabIndsAll = function() {
-  dat <- field('indsAll')
-  out <- c()
-  for (r in 1:length(dat)) {
-    out = rbind(out, dat[[r]]$tab())
-  }
-  out
-})
-popClass$methods(tabAlive = function() {
-  dat <- field('indsAlive')
-  if (length(dat)==0) stop('No individuals are listed as alive.')
-  out <- c()
-  for (r in 1:length(dat)) {
-    out = rbind(out, dat[[r]]$tab())
-  }
-  out
-})
-
-  # Pull the live individuals and store in popClass$indsAlive
-#popClass$methods(pullAlive = function() {
-  #alive <- llply(pop1$indsAll, function(x) if (x$liveStat==TRUE) x)
-  alive <- llply(field('indsAll'), function(x) if (x$liveStat==TRUE) x)
-  alive <- alive[!sapply(alive, is.null)]  
-  field('indsAlive', alive)
-})
-
-# Assess stage transitions
-popClass$methods(stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
-  iAlive <- field('indsAlive')
-  
-  kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
-  kitsAlive <- kitsAlive[!sapply(kitsAlive, is.null)]
-  
-  tsubAdultFAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'F' & 
-                                                   x$age > x$ageToAdult) x)
-  tsubAdultFAlive <- tsubAdultFAlive[!sapply(tsubAdultFAlive, is.null)]
-  
-  tsubAdultMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
-                                                   x$age > x$ageToAdult) x)
-  tsubAdultMAlive <- tsubAdultMAlive[!sapply(tsubAdultMAlive, is.null)]
-  
-  adultFemalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'F') x)
-  adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
-  adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
-  adultMalesAlive <- adultMalesAlive[!sapply(adultMalesAlive, is.null)]
-  
-  if (length(kitsAlive) > 0) {
-    for (k in 1:length(kitsAlive)) {
-      kind <- kitsAlive[[k]]
-      if (kind$sex == 'F') {
-        if (kind$age > ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age']) {
-          kind$socialStat = "SubAdult" 
-          rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
-          if (length(rang) == 1) kind$ageToAdult <- rang
-          else kind$ageToAdult <- sample(rang, size = 1)
-          }
-        }
-      else {
-        if (kind$age > ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age']) {
-          kind$socialStat = "SubAdult" 
-          rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
-          if (length(rang) == 1) kind$ageToAdult <- rang
-          else kind$ageToAdult <- sample(rang, size = 1)          
-        }
-      }
-    }
-  }
-  
-  if (length(tsubAdultFAlive) > 0) {
-    adF <- length(adultFemalesAlive)
-    
-    # Determine the K for the month
-    if (adF < Kf[1, 1]) {
-      rown <- which(runif(1) <= cumsum(Kf[1, -1]))
-      kf <- Kf[rown[1], 1]
-    }    
-    else {
-      rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
-      kf <- Kf[rown[1], 1]
-    }
-    
-    # Identify the allowed space
-    allowF <- kf - adF
-    
-    # If reduction in K, remove adults
-    if (allowF < 0) {
-      numRemove <- abs(allowF) 
-      for (nR in 1:numRemove) {
-        ages <- unlist(llply(adultFemalesAlive, function(x) x$age))
-        toRemove <- which(ages == min(ages))
-        if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
-        adultFemalesAlive[[toRemove]]$liveStat <- FALSE
-        adultFemalesAlive[[toRemove]]$mortMon <- .self$time
-        adultFemalesAlive <- adultFemalesAlive[[-toRemove]]
-      }
-    }
-
-    # If no space available, kill off subAdult females of the appropriate age
-    if (allowF <= 0) {
-      invisible(llply(tsubAdultFAlive, function (x) {
-       x$liveStat <- FALSE
-       x$mortMon <- .self$time
-       x$censored <- TRUE
-      }))
-    }
-    
-    # Else if space is available, sample subAdult females of the appropriate age
-    else {
-      sampF.size <- min(length(tsubAdultFAlive), allowF)
-      samp <- sample(1:length(tsubAdultFAlive), size = sampF.size)
-      invisible(llply(tsubAdultFAlive[samp], function(x) {
-        x$socialStat = 'Adult'
-        x$reproStat = TRUE
-      }))
-      invisible(llply(tsubAdultFAlive[-samp], function(x) {
-        x$liveStat = FALSE
-        x$mortMon <- .self$time
-        x$censored <- TRUE
-      }))
-    }
-  }
-    
-  if (length(tsubAdultMAlive) > 0) {
-    adM <- length(adultMalesAlive)
-    
-    # Determine the K for the month
-    if (adM < Km[1, 1]) {
-      rown <- which(runif(1) <= cumsum(Km[1, -1]))
-      km <- Km[rown[1], 1]
-    }
-    else {
-      rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
-      km <- Km[rown[1], 1]
-    }
-    
-    # Identify the allowed space
-    allowM <- km - adM
-    
-    # If reduction in K, remove adults
-    if (allowM < 0) {
-     numRemove <- abs(allowM) 
-     for (nR in 1:numRemove) {
-      ages <- unlist(llply(adultMalesAlive, function(x) x$age))
-      toRemove <- which(ages == min(ages))
-      if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
-      adultMalesAlive[[toRemove]]$liveStat <- FALSE
-      adultMalesAlive[[toRemove]]$mortMon <- .self$time
-      adultMalesAlive <- adultMalesAlive[[-toRemove]]
-     }
-    }
-    
-    # If no space available, kill off subAdult males of the appropriate age
-    if (allowM <= 0) {
-      invisible(llply(tsubAdultMAlive, function (x) {
-        x$liveStat <- FALSE
-        x$mortMon <- .self$time
-        x$censored <- TRUE
-      }))
-    }
-    
-    # Else if there is space, sample subAdult males of the appropriate age
-    else {
-      sampM.size <- min(length(tsubAdultMAlive), allowM)
-      samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
-      invisible(llply(tsubAdultMAlive[samp], function(x) {
-        x$socialStat = 'Adult'
-        x$reproStat = TRUE
-      }))
-      invisible(llply(tsubAdultMAlive[-samp], function(x) {
-        x$liveStat = FALSE
-        x$mortMon <- .self$time
-        x$censored <- TRUE
-      }))
-    }
-  }
-  
-  #  If now adult or subadult males of the appropriate age, allow younger males to move up
-  if (length(tsubAdultMAlive) == 0 & length(adultMalesAlive) == 0) {
-    tsaMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
-                                                     x$age >= minMaleReproAge) x)
-    tsaMAlive <- tsaMAlive[!sapply(tsaMAlive, is.null)]
-    
-    if (length(tsaMAlive) > 0) {
-      rown <- which(runif(1) <= cumsum(Km[1, -1]))
-      allowM <- Km[rown[1], 1]
-      sampM.size <- min(length(tsaMAlive), allowM)
-      samp <- sample(1:length(tsaMAlive), size = sampM.size)
-      invisible(llply(tsaMAlive[samp], function(x) {
-        x$socialStat = 'Adult'
-        x$reproStat = TRUE
-      }))
-    }
-  }
-  
-  .self$pullAlive()
-})
-
-  # Check breeding status
-popClass$methods(updateBreedStat = function(ageTrans) {
-  aL <- field('activeLitters')
-  
-  # Adjust litters based on mortality of mother
-  if (length(aL) > 0 ) {
-    for (l in length(aL):1) {
-      if (aL[[l]]$mother$liveStat == FALSE) {
-        # kill any remaining kittens
-        if (length(aL[[l]]$kittens) > 0) {
-         for (ks in 1:length(aL[[l]]$kittens)) {
-           if (aL[[l]]$kittens[[ks]]$age < 12) {
-            aL[[l]]$kittens[[ks]]$liveStat <- FALSE
-            aL[[l]]$kittens[[ks]]$mortMon <- .self$time
-           }
-           else {
-             aL[[l]]$kittens[[ks]]$socialStat <- 'SubAdult'
-             rang <- ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex==aL[[l]]$kittens[[ks]]$sex & ageTrans$socialStat == "SubAdult", 'high']
-             if (length(rang) == 1) aL[[l]]$kittens[[ks]]$ageToAdult <- rang
-             else aL[[l]]$kittens[[ks]]$ageToAdult <- sample(rang, size = 1)  
-           }
-         }
-        }
+    femBreed = function(male, numKittens, probFemaleKitt, lociNames, population) {
+      if(self$sex != "F")
+        stop("Input mother is not Female")
+      if(self$liveStat != TRUE)
+        stop("Input mother is not alive and cannot reproduce!")
+      if(self$reproStat != TRUE)
+        stop("Input mother is not reproductive")
       
-        # remove litters
-        aL[[l]] <- NULL
-      }
-    
-      else {
-        # change female reproductive status after gestation
-        if (aL[[l]]$gestation >= 3) {
-          aL[[l]]$mother$reproStat <- TRUE  
-          aL[[l]] <- NULL
-        }
+      if(male$sex != "M")
+        stop("Input father is not male")
+      if(male$liveStat != TRUE)
+        stop("Input father is not alive and cannot reproduce!")
+      if(male$reproStat != TRUE)
+        stop("Input father is not reproductive")
       
-        else {
-          if (length(aL[[l]]$kittens) > 0) {
-            for (k in length(aL[[l]]$kittens):1) {
-              # Pulling dead kittens or dispersed kittens (SubAdults)
-              if (aL[[l]]$kittens[[k]]$liveStat == FALSE | aL[[l]]$kittens[[k]]$socialStat != "Kitten") aL[[l]]$kittens[[k]] <- NULL
-            }
-          
-            #increment gestation
-            if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
-          }
-
-          else {
-          #increment gestation
-          aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
-          }
-        }
-      }
-      }
-    field('activeLitters', aL)
-  }
-})
-
-  # Assess reproduction
-popClass$methods(reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames) {
-  # Generate monthly probability of breeding
-  tPB <- betaval(probBreed$prob, probBreed$se)
-  
-  # Pull reproductive adults
-  f_alive <- llply(field("indsAlive"), function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  m_alive <- llply(field("indsAlive"), function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  #f_alive <- llply(popi$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  #m_alive <- llply(popi$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-  f_alive <- f_alive[!sapply(f_alive, is.null)]  
-  m_alive <- m_alive[!sapply(m_alive, is.null)]  
-  
-  #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
-  if (length(f_alive) != 0 & length(m_alive) != 0) {
-    for (f in length(f_alive):1) {
-      if (runif(1) <= tPB) {
-        # Select male mate
-        mate <- sample(m_alive, size = 1)
+      pop <- length(population$indsAll)
       
-        # Generate number of kitts
-        numKitts <- littSize(litterProbs)
+      # Generate new individuals
+      # Determine IDs
+      idKitt <- paste('sid', seq(pop + 1, pop + numKittens), sep = "")
       
-        # Breed
-        #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
-        f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, .self)
+      # Determine sex
+      sexKitt <- runif(numKittens, min = 0, max = 1) <= probFemaleKitt
+      sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
+      
+      # Determine genotype...completely random following Mendelian principles
+      gts <- rbind(self$genotype, male$genotype)
+      
+      genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
+      for (l in 1:length(lociNames)) {
+        cols <- grep(lociNames[l], names(gts))
+        genoKitt[, cols] <- apply(gts[, cols], 1, function (x) sample(x, size = numKittens, replace = TRUE))
       }
-    }
-  }
-})
-
-  # Assess survival
-popClass$methods(kill = function(surv) {
-  tSurv <- newSurv(surv)
-  alive <- field("indsAlive")
-  
-  # Assess survival
-  if (length(alive) > 0) {
-    for (i in 1:length(alive)) {
-      ind <- alive[[i]]
-      si <- tSurv[tSurv$sex == ind$sex & tSurv$socialStat == ind$socialStat, 's']
-      ind$liveStat <- runif(1) <= si
-    
-      #update mortMon for individual
-      if (ind$liveStat == FALSE) ind$mortMon <- .self$time
-    }
-  }
-  
-  .self$pullAlive()
-})
-
-# Add immigrants
-popClass$methods(addImmigrants = function(iP, immMaleProb, ageTrans) {
-  ro <- sample(1:nrow(iP), size = 1)
-  
-  # Pull geno and create new ID
-  newgeno <- iP[ro, -c(1:2)]
-  newID <- paste('iid', (length(.self$indsAll) + 1), sep="")
-  
-  # Determine sex and age of immigrant
-  if (runif(1) <= immMaleProb) {
-    sex <- 'M'
-    age <- round(runif(1, min=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'Kitten', 'age'],
-                 max=ageTrans[ageTrans$sex == 'M' & ageTrans$socialStat == 'SubAdult', 'age']))
-    rang <- ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='M' & ageTrans$socialStat == "SubAdult", 'high']
-    if (length(rang) == 1) ata <- rang
-    else ata <- sample(rang, size = 1)   
-  }
-  else {
-    sex <- 'F'
-    age <- round(runif(1, min=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'Kitten', 'age'],
-                       max=ageTrans[ageTrans$sex == 'F' & ageTrans$socialStat == 'SubAdult', 'age']))
-    rang <- ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'low']:ageTrans[ageTrans$sex=='F' & ageTrans$socialStat == "SubAdult", 'high']
-    if (length(rang) == 1) ata <- rang
-    else ata <- sample(rang, size = 1)
-    }
-  
-  # Create new immigrant and add to population
-  imm <- indClass$new(animID=newID, sex=sex, age=age, mother=as.character(NA), father=as.character(NA), 
-                      socialStat="SubAdult", reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                      birthMon=.self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE, ageToAdult=ata)
-  imm$addToPop(.self)
-  
-  # Update living populations
-  .self$pullAlive()
-  
-  # Return subset of immigrant populations
-  return(iP[-ro, ])
-})
-
-# Update population stats
-popClass$methods(updateStats = function(genOutput) {
-  # pull living individuals
-  iAlive <- field('indsAlive')
-  
-  # update population size
-  op <- list()
-  of <- matrix(0, nrow = 4, ncol=1, byrow = F)
-  of[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='F'))))
-  of[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='F'))))
-  of[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='F'))))
-  of[4,1] <- sum(of[1:3,1])
-  op$Females <- of
-  
-  om <- matrix(0, nrow = 4, ncol=1, byrow = F)
-  om[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten' & x$sex=='M'))))
-  om[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult' & x$sex=='M'))))
-  om[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult' & x$sex=='M'))))
-  om[4,1] <- sum(om[1:3,1])
-  op$Males <- om
-  
-  ot <- matrix(0, nrow = 4, ncol=1, byrow = F)
-  ot[1,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Kitten'))))
-  ot[2,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='SubAdult'))))
-  ot[3,1] <- sum(unlist(llply(iAlive, function(x) sum(x$socialStat=='Adult'))))
-  ot[4,1] <- sum(ot[1:3,1])
-  op$All <- ot
-  
-  for (subP in 1:length(field('pop.size'))) {
-   .self$pop.size[[subP]][, paste("M", field('time'), sep="")] <- op[[subP]]
-  }
-  
-  # update extinction
-  if (op$All[4, 1] <= 1) field('extinct', TRUE)
-  else {
-    if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) field('extinct', TRUE)
-    if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) field('extinct', TRUE)
-  }
-  
-  if ((field('time')/12)%%1 == 0) {
-    # Assign year for field names
-    year <- paste("Y", field('time')/12, sep = "")
-    
-   # lambda
-    if (field('time') == 0) .self$lambda[, year] <- 1
-    else {.self$lambda[, year] <- .self$pop.size$All[nrow(.self$pop.size$All), ncol(.self$pop.size$All)] / .self$pop.size$All[nrow(.self$pop.size$All), ncol(.self$pop.size$All) - 12]}
-    
-    if (genOutput) {
-      ### Genetic metrics
-      g <- pullGenos(iAlive)
-      g_genind <- df2genind(createGenInput(g), sep="_")
-    
-      if (Sys.info()[[1]] == 'Windows') sink('NUL')
-      else {sink('aux')}
-      sumGind <- summary(g_genind)
-      g_genpop <- genind2genpop(g_genind, pop = rep(field('popID'), nrow(g)))
-      sink(NULL)
-    
-      # Allelic richness Na
-      .self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
-    
-      # Ne
-      if (year == 'Y0') {
-        fem <- llply(iAlive, function (x) if (x$sex == 'F' & x$socialStat == 'Adult') x)
-        fem <- length(fem[!sapply(fem, is.null)])
-        mal <- llply(iAlive, function (x) if (x$sex == 'M' & x$socialStat == 'Adult') x)
-        mal <- length(mal[!sapply(mal, is.null)]) 
-        .self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
+      genoKitt <- as.data.frame(genoKitt)
+      names(genoKitt) <- names(gts)
+      
+      # Determine birth month
+      bm <- population$time
+      
+      # Loop new individuals
+      kittens <- list()
+      for (k in 1:numKittens) {
+        # gen Individual
+        ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=self$animID, father=male$animID, socialStat="Kitten", 
+                            reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
+                            birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE, ageToAdult=as.numeric(NA))
+        
+        # add to population
+        population$addToPop(ind) 
+        kittens <- append(kittens, ind)
       }
-      else {
-        fem <- llply(iAlive, function (x) if (x$sex == 'F' & grepl(':', x$reproHist) >= 1) x)
-        fem <- length(fem[!sapply(fem, is.null)])
-        mal <- llply(iAlive, function (x) if (x$sex == 'M' & grepl(':', x$reproHist) >= 1) x)
-        mal <- length(mal[!sapply(mal, is.null)]) 
-        .self$Ne[, year] <- (4 * fem * mal) / (fem + mal)
-      }
-
-      # Proportion of alleles polymorphic
-      .self$PropPoly[, year] <- mean(isPoly(g_genind, by=c("locus")))
-    
-      # Expected heterozygosity He and Ho
-      Hexp <- sumGind$Hexp
-      Hobs <- sumGind$Hobs
-      .self$He[, year] <- c(mean(Hexp), sd(Hexp) / sqrt(length(Hexp)))
-      .self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
-    
-      # Individual heterozygosity IR
-      .self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
-    
-      # Inbreeding coefficient Fis
-      Fis_ind <- sapply(inbreeding(g_genind, N=50), mean)
-      .self$Fis[, year] <- c(mean(Fis_ind), sd(Fis_ind) / sqrt(length(Fis_ind)))
+      
+      # update individuals alive
+      population$pullAlive()
+      
+      # update activeLitters
+      population$activeLitters <- append(population$activeLitters, 
+                                         list(list(mother=self, kittens = kittens, gestation = 0)))
+      
+      # Update reproHist and reproStat for mother and father
+      self$reproStat <- FALSE
+      self$reproHist <- paste(self$reproHist, numKittens, sep=":")
+      male$reproHist <- paste(male$reproHist, numKittens, sep=":")
     }
-  }
-})
-
-# Update time
-popClass$methods(incremTime = function(senesc) {
-  field('time', field('time') + 1)
-  
-  # age individuals
-  alive <- field("indsAlive")
-  if (length(alive) > 0) {
-    for (i in 1:length(alive)) {
-      alive[[i]]$age <- alive[[i]]$age + 1
-      if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
-    }
-  }
-  .self$pullAlive()
-})
-
+))
 
 
   ##########################
