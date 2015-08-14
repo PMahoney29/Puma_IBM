@@ -21,7 +21,7 @@ require(parallel)
 require(foreach)
 require(doParallel)
 require(R6)
-filenmae <- 'classes_IBM_R6.R'
+filename <- 'classes_IBM_R6.R'
 
 
 ###########################
@@ -141,18 +141,103 @@ simClass <- R6Class('simClass',
     SimTime = NA, #Change to appropriate posix class
     iterations = NA,
     years = NA,
-    populations = NA,
+    populations = data.frame(),
     pop.size = list(),
-    lambda = NA,
+    lambda = data.frame(),
     extinct = FALSE,
     extinctTime = NA,  #Change to appropriate numeric with na class
     Na = list(),
-    Ne = NA,
-    PropPoly = NA,
+    Ne = data.frame(),
+    PropPoly = data.frame(),
     He = list(),
     Ho = list(),
     IR = list(),
     Fis = list(),
+    
+    startSim = function(iter, years, startValues, lociNames, genoCols, 
+                        surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
+                        Kf, Km, senesc, minMaleReproAge, 
+                        immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                        genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+      start <- Sys.time()
+      self$Date <- start
+      self$iterations <- iter
+      self$years <- years
+      immPop_subset <- immPop
+      
+      # Set-up list structure for outputs stats
+      self$pop.size <- list(Females = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
+                             Males = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
+                             All = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()))
+      self$Na <- list(mean = c(), se = c())
+      self$He <- list(mean = c(), se = c())
+      self$Ho <- list(mean = c(), se = c())
+      self$IR <- list(mean = c(), se = c())
+      self$Fis <- list(mean = c(), se = c())
+      
+      for (i in 1:iter) {
+        if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
+        
+        # new instances of popClass
+        popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
+        
+        # fill with starting values
+        popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
+                      socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
+        
+        # simulate population
+        months <- years * 12
+        for (m in 1:months) {
+          popi$kill(surv)
+          popi$incremTime(senesc)
+          if (runif(1) <= immRate) {
+            immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
+            if (nrow(immPop_subset) == 0) immPop_subset <- immPop
+          }
+          popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
+          popi$updateBreedStat(ageTrans)
+          popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+          popi$updateStats(genOutput)
+          if (popi$extinct == TRUE) break
+        }
+        
+        if (savePopulations == TRUE) 
+          self$populations <- rbind(self$populations, cbind(PopID = popi$popID, popi$tabAll()))
+
+        for (subP in 1:length(self$pop.size)) {
+          for (stage in 1:length(self$pop.size[[subP]])) {
+            self$pop.size[[subP]][[stage]] <- rbind.fill(self$pop.size[[subP]][[stage]], popi$pop.size[[subP]][stage, ])
+          }
+        }
+        
+        if (genOutput) {
+          for (stat in 1:length(self$Na)) {
+            self$Na[[stat]] <- rbind.fill(self$Na[[stat]], popi$Na[stat, ])
+          }
+          for (stat in 1:length(self$He)) {
+            self$He[[stat]] <- rbind.fill(self$He[[stat]], popi$He[stat, ])
+          }
+          for (stat in 1:length(self$Ho)) {
+            self$Ho[[stat]] <- rbind.fill(self$Ho[[stat]], popi$Ho[stat, ])
+          }
+          for (stat in 1:length(self$IR)) {
+            self$IR[[stat]] <- rbind.fill(self$IR[[stat]], popi$IR[stat, ])
+          }
+          for (stat in 1:length(self$Fis)) {
+            self$Fis[[stat]] <- rbind.fill(self$Fis[[stat]], popi$Fis[stat, ])
+          }
+          self$PropPoly <- rbind.fill(self$PropPoly, popi$PropPoly)
+          self$Ne <- rbind.fill(self$Ne, popi$Ne)
+        }
+        self$lambda <- rbind.fill(self$lambda, popi$lambda)
+        self$extinct <- c(self$extinct, popi$extinct)
+        if (popi$extinct)
+          self$extinctTime <- c(self$extinctTime, (popi$time / 12))
+      }
+      
+      self$SimTime <- (Sys.time() - start)
+      #print(paste('Computation time: ', (Sys.time() - start), sep=''))
+    },
     
     startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
                            surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
@@ -524,6 +609,56 @@ simClass <- R6Class('simClass',
       }
       
       out
+    },
+    
+    pullGenoSummary = function(years, genoMetric) {
+      Y <- paste("Y", years, sep="")
+      o <- list()
+      for (y in Y) {
+        oGen <- data.frame()
+        for (g in genoMetric) {
+          stat <- self[[g]]$mean[, y]
+          oGen <- rbind(oGen,
+                        cbind(GenoMetric = g, 
+                              mean = mean(stat, na.rm = T), 
+                              se = sd(stat, na.rm = T) / sqrt(length(stat)),
+                              lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
+                              uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+        }
+        o[[y]] <- oGen
+      }
+      return(o)
+    },
+    
+    immigrants = function () {
+      y <- self$years
+      ps <- self$populations
+      
+      o <- ddply(ps, .(PopID), summarize, Immigrants = sum(immigrant), 
+                 ImmRate = sum(immigrant) / years,
+                 ReproductiveImm = sum(!is.na(reproHist) & immigrant),
+                 ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
+      
+      mNumImm <- mean(o$Immigrants)
+      ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
+      mImmRate <- mean(o$ImmRate)
+      ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
+      mNumReproImm <- mean(o$ReproductiveImm)
+      ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
+      mImmReproRate <- mean(o$ReproImmRate)
+      ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
+      r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
+      r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
+      r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
+      r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
+      o.summary <- rbind(r1, r2, r3, r4) 
+      row.names(o.summary) <- c("Total Immigrants", 
+                                paste("Immigrant Rate (per ", years, " years)", sep=""),
+                                "Total Reproductive Immigrants",
+                                paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+      
+      o.list <- list(summary = o.summary, byPop = o)
+      return(o.list)
     },
     
     plot = function(fieldStat) {
@@ -1299,15 +1434,3 @@ indClass <- R6Class('indClass',
       male$reproHist <- paste(male$reproHist, numKittens, sep=":")
     }
 ))
-
-
-#########################
-## Test Code
-#########################
-#ID='animID'
-#sex='sex'
-#age='age'
-#mother='mother'
-#father='father'
-#socialStat='socialStat'
-#reproStat='reproStat'
