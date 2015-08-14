@@ -21,6 +21,7 @@ require(parallel)
 require(foreach)
 require(doParallel)
 require(R6)
+filenmae <- 'classes_IBM_R6.R'
 
 
 ###########################
@@ -134,26 +135,518 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 ## popClass <- population classes that serves as a container for indClass (individuals)
 ## indClass <- individual class, so far does not 'contain' popClass
 #####################
-simClass <- setRefClass(
-  Class = 'simClass',
-  fields = list(
-    Date = 'ANY',    #Change to appropriate posix class
-    SimTime = 'ANY', #Change to appropriate posix class
-    iterations = 'numeric',
-    years = 'numeric',
-    populations = 'data.frame',
-    pop.size = 'list',
-    lambda = 'data.frame',
-    extinct = 'logical',
-    extinctTime = 'numeric',  #Change to appropriate numeric with na class
-    Na = 'list',
-    Ne = 'data.frame',
-    PropPoly = 'data.frame',
-    He = 'list',
-    Ho = 'list',
-    IR = 'list',
-    Fis = 'list'
-  ))
+simClass <- R6Class('simClass',
+  public = list(
+    Date = NA,    #Change to appropriate posix class
+    SimTime = NA, #Change to appropriate posix class
+    iterations = NA,
+    years = NA,
+    populations = NA,
+    pop.size = list(),
+    lambda = NA,
+    extinct = FALSE,
+    extinctTime = NA,  #Change to appropriate numeric with na class
+    Na = list(),
+    Ne = NA,
+    PropPoly = NA,
+    He = list(),
+    Ho = list(),
+    IR = list(),
+    Fis = list(),
+    
+    startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
+                           surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
+                           Kf, Km, senesc, minMaleReproAge,
+                           immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                           genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+      start <- Sys.time()
+      self$Date <- start
+      self$iterations <- iter
+      self$years <- years
+      immPop_subset <- immPop
+      
+      cSim <- function(s1, s2) {
+        s1$populations <- rbind(s1$populations, s2$populations)
+        for (subP in 1:length(s1$pop.size)) {
+          for (stage in 1:length(s1$pop.size[[subP]])) {
+            s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
+          }
+        }
+        
+        s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
+        s1$extinct <- c(s1$extinct, s2$extinct)
+        s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
+        
+        for (stat in 1:length(s1$Na)) {
+          s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
+        }
+        
+        for (stat in 1:length(s1$He)) {
+          s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
+        }
+        for (stat in 1:length(s1$Ho)) {
+          s1$Ho[[stat]] <- rbind.fill(s1$Ho[[stat]], s2$Ho[[stat]])
+        }
+        for (stat in 1:length(s1$IR)) {
+          s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
+        }
+        for (stat in 1:length(s1$Fis)) {
+          s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
+        }
+        s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
+        s1$Ne <- rbind.fill(s1$Ne, s2$Ne)
+        
+        return(s1)
+      }
+      
+      packList <- c('methods','plyr', 'popbio', 'Rhh')
+      
+      #start cluster
+      cl <- makeCluster(numCores)
+      registerDoParallel(cl, cores = numCores)
+      
+      #operation
+      o <- foreach(i = 1:iter, .combine = cSim, 
+                   .packages = packList, 
+                   .inorder = F, .verbose = FALSE, .export = 'filename') %dopar% {
+                     source(filename)
+                     
+                     # new instances of popClass
+                     popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
+                     
+                     # fill with starting values
+                     popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
+                                   socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans=ageTrans)
+                     
+                     # simulate population
+                     months <- years * 12
+                     for (m in 1:months) {
+                       popi$kill(surv)
+                       popi$incremTime(senesc)
+                       if (runif(1) <= immRate) {
+                         immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
+                         if (nrow(immPop_subset) == 0) immPop_subset <- immPop
+                       }
+                       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
+                       popi$updateBreedStat(ageTrans)
+                       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+                       #popi$kill(surv)
+                       popi$updateStats(genOutput)
+                       if (popi$extinct == TRUE) break
+                     }
+                     
+                     #if (savePopulations == TRUE) sim1$field("populations", append(sim1$field("populations"), list(popi)))
+                     out <- list()
+                     if (savePopulations == TRUE) {
+                       out$populations <- cbind(PopID = popi$popID, popi$tabAll())
+                     }
+                     else {out$populations <- NULL}
+                     
+                     out$pop.size <- llply(popi$pop.size, function(x) {
+                       list(Kittens = x[1,], SubAdults = x[2,], Adults = x[3,], TotalN = x[4,])
+                     })
+                     
+                     out$lambda <- popi$lambda
+                     out$extinct <- popi$extinct
+                     if (out$extinct)
+                       out$extinctTime <- popi$time / 12
+                     else {out$extinctTime <- NA}
+                     
+                     if (genOutput) {
+                       out$Na$mean <- popi$Na[1, ]
+                       out$Na$se <- popi$Na[2, ]
+                       
+                       out$He$mean <- popi$He[1, ]
+                       out$He$se <- popi$He[2, ]              
+                       
+                       out$Ho$mean <- popi$Ho[1, ]
+                       out$Ho$se <- popi$Ho[2, ]              
+                       
+                       out$IR$mean <- popi$IR[1, ]
+                       out$IR$se <- popi$IR[2, ]
+                       
+                       out$Fis$mean <- popi$Fis[1, ]
+                       out$Fis$se <- popi$Fis[2, ]
+                       
+                       out$PropPoly <- popi$PropPoly
+                       out$Ne <- popi$Ne
+                     }
+                     else {
+                       out$Na$mean <- NULL
+                       out$Na$se <- NULL
+                       
+                       out$He$mean <- NULL
+                       out$He$se <- NULL              
+                       
+                       out$Ho$mean <- NULL
+                       out$Ho$se <- NULL              
+                       
+                       out$IR$mean <- NULL
+                       out$IR$se <- NULL
+                       
+                       out$Fis$mean <- NULL
+                       out$Fis$se <- NULL
+                       
+                       out$PropPoly <- NULL
+                       out$Ne <- NULL
+                     }
+                     return(out)
+                   }
+      
+      #stop cluster
+      stopCluster(cl)
+      
+      # Set-up list structure for outputs stats
+      self$populations <- o$populations
+      self$pop.size <- o$pop.size
+      self$Na <- list(mean = o$Na$mean, se = o$Na$se)
+      self$Ne <- o$Ne
+      self$He <- list(mean = o$He$mean, se = o$He$se)
+      self$Ho <- list(mean = o$Ho$mean, se = o$Ho$se)
+      self$IR <- list(mean = o$IR$mean, se = o$IR$se)
+      self$Fis <- list(mean = o$Fis$mean, se = o$Fis$se)
+      self$PropPoly <- o$PropPoly
+      self$lambda <- o$lambda
+      if (!is.null(o$extinct)) self$extinct <- o$extinct
+      self$extinctTime <- o$extinctTime
+      
+      self$SimTime <- (Sys.time() - start)
+      #print(paste('Computation time: ', (Sys.time() - start), sep=''))
+    },
+    
+    summary = function() {
+      
+      N.iter <- self$iterations
+      N.years <- self$years
+      
+      # Lambda
+      EmpLambda_means <- sort(apply(self$lambda[, -1], 1, function(x) gm_mean(x, na.rm=T)))
+      EmpLambda_mean <- mean(EmpLambda_means)
+      EmpLambda_median <- median(EmpLambda_means)
+      EmpLambda_se <- sd(EmpLambda_means) / sqrt(N.iter)
+      EmpLambda_quant <- HPDinterval(as.mcmc(EmpLambda_means), prob = 0.95, na.rm = T)
+      
+      StochLogLambda_means <- apply(self$lambda[, -1], 1, function(x) mean(log(x), na.rm=T))
+      StochLogLambda_mean <- mean(StochLogLambda_means)
+      StochLogLambda_median <- median(StochLogLambda_means)
+      StochLogLambda_se <- sd(StochLogLambda_means) / sqrt(N.iter)
+      StochLogLambda_quant <- HPDinterval(as.mcmc(StochLogLambda_means), prob = 0.95, na.rm = T)
+      
+      # Extinction prob
+      Prob.extinct <- mean(self$extinct)
+      Extinct.time_mean <- mean(self$extinctTime)
+      Extinct.time_median <- mean(self$extinctTime)
+      if (length(na.omit(self$extinctTime)) > 1) {
+        Extinct.time_quant <- HPDinterval(as.mcmc(self$extinctTime), prob = 0.95, na.rm = T)
+        eTime <- data.frame(mean = Extinct.time_mean,
+                            median = Extinct.time_median,
+                            lHPDI95 = Extinct.time_quant[1],
+                            uHPDI95 = Extinct.time_quant[2])}
+      else {
+        eTime <- data.frame(mean = Extinct.time_mean,
+                            median = Extinct.time_median,
+                            lHPDI95 = 'Inestimable',
+                            uHPDI95 = 'Inestimable') 
+      }
+      
+      # Mean final population size
+      if (((N.years * 12) + 1) == ncol(self$pop.size$All$TotalN)) {
+        ps <- self$pop.size
+        outSize <- llply(ps, function (x) {
+          ldply(x, function (y) {
+            y[is.na(y)] <- 0
+            mean <- mean(y[, ncol(y)])
+            se <- sd(y[, ncol(y)]) / sqrt(N.iter)
+            HPDI95 = HPDinterval(as.mcmc(y[, ncol(y)]), prob = 0.95, na.rm = T)
+            return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
+          })
+        })
+      }
+      else {outSize <- 'Final Population size = 0 since ExtinctionProb = 1'}
+      
+      # Immigrant population stats
+      pps <- self$populations
+      o <- ddply(pps, .(PopID), summarize, Immigrants = sum(immigrant), 
+                 ImmRate = sum(immigrant) / years,
+                 ReproductiveImm = sum(!is.na(reproHist) & immigrant),
+                 ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
+      
+      mNumImm <- mean(o$Immigrants)
+      ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
+      mImmRate <- mean(o$ImmRate)
+      ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
+      mNumReproImm <- mean(o$ReproductiveImm)
+      ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
+      mImmReproRate <- mean(o$ReproImmRate)
+      ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
+      r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
+      r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
+      r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
+      r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
+      imm <- rbind(r1, r2, r3, r4) 
+      row.names(imm) <- c("Total Immigrants", 
+                          paste("Immigrant Rate (per ", years, " years)", sep=""),
+                          "Total Reproductive Immigrants",
+                          paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+      
+      if (!is.null(self$Na$mean) & (N.years + 1) == ncol(self$Na$mean)) {
+        # Mean final genetics
+        outGen <- data.frame()
+        Nai <- self$Na$mean[, N.years + 1]
+        Nei <- self$Ne[, N.years + 1]
+        PropPolyi <- self$PropPoly[, N.years + 1]
+        Hei <- self$He$mean[, N.years + 1]
+        Hoi <- self$Ho$mean[, N.years + 1]
+        IRi <- self$IR$mean[, N.years + 1]
+        Fisi <- self$Fis$mean[, N.years + 1]
+        
+        if (length(na.omit(Nai)) > 1) {
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Na", 
+                                mean = mean(Nai, na.rm = T), 
+                                se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Ne", 
+                                mean = mean(Nei, na.rm = T), 
+                                se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "PropPoly", 
+                                mean = mean(PropPolyi, na.rm = T), 
+                                se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "He", 
+                                mean = mean(Hei, na.rm = T), 
+                                se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Ho", 
+                                mean = mean(Hoi, na.rm = T), 
+                                se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "IR", 
+                                mean = mean(IRi, na.rm = T), 
+                                se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Fis", 
+                                mean = mean(Fisi, na.rm = T), 
+                                se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
+          
+          row.names(outGen) <- rep(NULL, nrow(outGen))
+        }
+        
+        else {
+          HPDI95 = 'Inestimable'
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Na", 
+                                mean = mean(Nai, na.rm = T), 
+                                se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Ne", 
+                                mean = mean(Nei, na.rm = T), 
+                                se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "PropPoly", 
+                                mean = mean(PropPolyi, na.rm = T), 
+                                se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "He", 
+                                mean = mean(Hei, na.rm = T), 
+                                se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Ho", 
+                                mean = mean(Hoi, na.rm = T), 
+                                se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "IR", 
+                                mean = mean(IRi, na.rm = T), 
+                                se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          outGen <- rbind(outGen, 
+                          cbind(stat = "Fis", 
+                                mean = mean(Fisi, na.rm = T), 
+                                se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                                lHPDI95 = HPDI95,
+                                uHPDI95 = HPDI95))
+          
+          row.names(outGen) <- rep(NULL, nrow(outGen))      
+        }
+        
+        out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
+                    Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
+                                        median = c(EmpLambda_median, exp(StochLogLambda_median)),
+                                        lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
+                                        uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
+                                        l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
+                                        u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
+                                        row.names = c("Empirical Lambda", "Stochastic Lambda")),
+                    ExtinctionProb = Prob.extinct,
+                    ExtinctionTime = eTime,
+                    Pop.size = outSize,
+                    Immigrants = imm,
+                    GeneticComposition = outGen)
+      }
+      else {
+        out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
+                    Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
+                                        median = c(EmpLambda_median, exp(StochLogLambda_median)),
+                                        lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
+                                        uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
+                                        l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
+                                        u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
+                                        row.names = c("Empirical Lambda", "Stochastic Lambda")),
+                    ExtinctionProb = Prob.extinct,
+                    Pop.size = outSize,
+                    Immigrants = imm,
+                    GeneticComposition = "No genetic output generated: Check if genOutput = TRUE or if ExtinctionProb = 1")    
+      }
+      
+      out
+    },
+    
+    plot = function(fieldStat) {
+      #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
+      if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'Ne', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
+      
+      for (p in 1:length(fieldStat)) {
+        par(ask=TRUE)
+        
+        if (fieldStat[p]=='pop.size') {
+          ps <- self$pop.size
+          for (t in 1:length(ps)) {
+            mplots <- list()
+            for (i in 1:length(ps[[t]])) {
+              psi_mean <- apply(ps[[t]][[i]], 2, function(x) mean(x, na.rm=T))
+              psi_low <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+              psi_hi <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+              dat_psi <-  data.frame(month = 0:(ncol(ps[[t]][[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
+              erib <- aes(ymax = psi_u95, ymin = psi_l95)
+              assign(paste('ps_', names(ps[[t]])[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+                       ggtitle(paste(names(ps)[t], 'Population', sep=' ')) +
+                       labs(x="Month", y=paste("Population Size:", names(ps[[t]])[i])) + #ylim(c(0,20)) + 
+                       theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
+                             axis.text.y=element_text(size=10),
+                             axis.title.x = element_text(size=10, vjust=-0.65),
+                             axis.title.y = element_text(size=10, vjust=1)) 
+              )
+              mplots[[i]] <- get(paste('ps_', names(ps[[t]])[i], sep=""))
+            }
+            multiplot(plotlist=mplots, cols = 2)
+          }
+        }
+        
+        if (fieldStat[p]=='lambda') {
+          # By Emp
+          lp_Empmean <- apply(self$lambda[, -1], 1, function(x) gm_mean(x, na.rm=T))
+          dat_lp <- data.frame(x = lp_Empmean)
+          lp1 <- ggplot(data = dat_lp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
+            aes(y = ..density..) + labs(x="Emp Lambda", y="Density") +
+            theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+                  axis.title.y = element_text(size = 20, vjust = 1))
+          
+          # By Last Year
+          lp_Stochmean <- exp(apply(self$lambda[, -1], 1, function(x) mean(log(x), na.rm=T)))
+          dat_lyp <- data.frame(x = lp_Stochmean)
+          lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
+            aes(y = ..density..) + labs(x="Stoch Lambda", y="Density") +
+            theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+                  axis.title.y = element_text(size = 20, vjust = 1))
+          multiplot(lp1, lp2, cols = 1)
+          #par(ask=T) 
+        }
+        
+        if (fieldStat[p]=='extinctTime' & length(na.omit(self$extinctTime)) >= 1) {
+          dat_et <- data.frame(x = self$extinctTime)
+          etp <- ggplot(data = dat_et, mapping = aes(x = x)) + geom_histogram() + #xlim(c(0.7, 1.1)) +
+            aes(y = ..density..) + labs(x="Time to Extinction (Years)", y="Density") +
+            theme(axis.title.x = element_text(size = 20, vjust = -0.65),
+                  axis.title.y = element_text(size = 20, vjust = 1))
+          multiplot(etp)
+        }
+        
+        if (fieldStat[p]=='PropPoly') {
+          pp <- self$PropPoly
+          pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
+          pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+          pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+          dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
+          erib <- aes(ymax = pp_u95, ymin = pp_l95)
+          #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
+          #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
+          #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+          pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+            labs(x="Year", y='Prop of Polymorphic Loci') + ylim(c(0,1)) + 
+            theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                  axis.text.y=element_text(size=20),
+                  axis.title.x = element_text(size=20, vjust=-0.65),
+                  axis.title.y = element_text(size=20, vjust=1)) 
+          multiplot(pp1, cols=1)
+        }
+        
+        if (fieldStat[p]=='Ne') {
+          pp <- self$Ne
+          pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
+          pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+          pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+          dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
+          erib <- aes(ymax = pp_u95, ymin = pp_l95)
+          #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
+          #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
+          #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
+          pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+            labs(x="Year", y='Ne') + #ylim(c(0,1)) + 
+            theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                  axis.text.y=element_text(size=20),
+                  axis.title.x = element_text(size=20, vjust=-0.65),
+                  axis.title.y = element_text(size=20, vjust=1)) 
+          multiplot(pp1, cols=1)
+        }
+        
+        if (fieldStat[p]=='Na' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
+          fi <- self[[fieldStat[p]]]$mean
+          fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
+          fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
+          fi_hi <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
+          dat_fi <-  data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_l95 = fi_low, fi_u95 = fi_hi)
+          erib <- aes(ymax = fi_u95, ymin = fi_l95)
+          #fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
+          #dat_fi <- data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_se = fi_se)
+          #erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
+          fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
+            labs(x="Year", y=fieldStat[p]) + #ylim(c(0,1)) + 
+            theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
+                  axis.text.y=element_text(size=20),
+                  axis.title.x = element_text(size=20, vjust=-0.65),
+                  axis.title.y = element_text(size=20, vjust=1)) 
+          multiplot(fi1, cols=1)
+        }
+        
+      }
+    }
+))
 
 popClass <- R6Class('popClass',
   public = list(
@@ -173,8 +666,8 @@ popClass <- R6Class('popClass',
     IR = NA,
     Fis = NA,
     
-    initialize = function(pID) {
-      self$popID <- pID
+    initialize = function(popID, ...) {
+      self$popID <- popID
     },
     
     startPop = function(startValues, ID, sex, age, mother, father, ageTrans, socialStat, reproStat, genoCols, genOutput) {
@@ -276,7 +769,7 @@ popClass <- R6Class('popClass',
       out
     },
     
-    updateStats = function (genoutput) {
+    updateStats = function (genOutput) {
       # pull living individuals
       iAlive <- self$indsAlive
     
@@ -325,7 +818,7 @@ popClass <- R6Class('popClass',
         if (genOutput) {
           ### Genetic metrics
           g <- pullGenos(iAlive)
-          g_genind <- df2genind(createGenInput(g), sep="_")
+          g_genind <- df2genind(createGenInput(g), sep="_", ind.names = g[,1])
         
           if (Sys.info()[[1]] == 'Windows') sink('NUL')
           else {sink('aux')}
@@ -334,7 +827,7 @@ popClass <- R6Class('popClass',
           sink(NULL)
         
           # Allelic richness Na
-          self$Na[, year] <- c(mean(g_genind@loc.nall), sd(g_genind@loc.nall) / sqrt(length(g_genind@loc.nall)))
+          self$Na[, year] <- c(mean(g_genind@loc.n.all), sd(g_genind@loc.n.all) / sqrt(length(g_genind@loc.n.all)))
       
           # Ne
           if (year == 'Y0') {
@@ -810,635 +1303,13 @@ indClass <- R6Class('indClass',
 ))
 
 
-  ##########################
-  ##   simClass methods   ##
-  ##########################
-
-simClass$methods(startSim = function(iter, years, startValues, lociNames, genoCols, 
-                                     surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, minMaleReproAge, 
-                                     immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
-                                     genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
-  start <- Sys.time()
-  field('Date', start)
-  field('iterations', iter)
-  field('years', years)
-  immPop_subset <- immPop
-  
-  # Set-up list structure for outputs stats
-  field('pop.size', list(Females = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
-                         Males = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c()),
-                         All = list(kittens = c(), SubAdults = c(), Adults = c(), Total = c())))
-  field('Na', list(mean = c(), se = c()))
-  field('He', list(mean = c(), se = c()))
-  field('Ho', list(mean = c(), se = c()))
-  field('IR', list(mean = c(), se = c()))
-  field('Fis', list(mean = c(), se = c()))
-
-  for (i in 1:iter) {
-    if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
-    
-    # new instances of popClass
-    popi <- popClass$new(pID = paste('Population_', i, sep=""))
-    
-    # fill with starting values
-    popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                  socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
-    
-    # simulate population
-    months <- years * 12
-    for (m in 1:months) {
-      popi$kill(surv)
-      popi$incremTime(senesc)
-      if (runif(1) <= immRate) {
-        immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
-        if (nrow(immPop_subset) == 0) immPop_subset <- immPop
-      }
-      popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
-      popi$updateBreedStat(ageTrans)
-      popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
-      popi$updateStats(genOutput)
-      if (popi$extinct == TRUE) break
-    }
-    
-    if (savePopulations == TRUE) 
-      field("populations", rbind(field("populations"), cbind(PopID = popi$popID, popi$tabIndsAll())))
-      #field("populations", append(field("populations"), list(popi)))
-
-    for (subP in 1:length(field('pop.size'))) {
-      for (stage in 1:length(field('pop.size')[[subP]])) {
-        .self$pop.size[[subP]][[stage]] <- rbind.fill(.self$pop.size[[subP]][[stage]], popi$pop.size[[subP]][stage, ])
-      }
-    }
-    
-   if (genOutput) {
-      for (stat in 1:length(field('Na'))) {
-        .self$Na[[stat]] <- rbind.fill(.self$Na[[stat]], popi$Na[stat, ])
-      }
-      for (stat in 1:length(field('He'))) {
-        .self$He[[stat]] <- rbind.fill(.self$He[[stat]], popi$He[stat, ])
-      }
-      for (stat in 1:length(field('Ho'))) {
-        .self$Ho[[stat]] <- rbind.fill(.self$Ho[[stat]], popi$Ho[stat, ])
-      }
-      for (stat in 1:length(field('IR'))) {
-        .self$IR[[stat]] <- rbind.fill(.self$IR[[stat]], popi$IR[stat, ])
-      }
-      for (stat in 1:length(field('Fis'))) {
-        .self$Fis[[stat]] <- rbind.fill(.self$Fis[[stat]], popi$Fis[stat, ])
-      }
-      field('PropPoly', rbind.fill(field('PropPoly'), popi$PropPoly))
-      field('Ne', rbind.fill(field('Ne'), popi$Ne))
-    }
-    field('lambda', rbind.fill(field('lambda'), popi$lambda))
-    field('extinct', c(field('extinct'), popi$extinct))
-    if (popi$extinct)
-      field('extinctTime', c(field('extinctTime'), (popi$time / 12)))
-  }
-  
-  field('SimTime', (Sys.time() - start))
-  #print(paste('Computation time: ', (Sys.time() - start), sep=''))
-})
-
-simClass$methods(startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
-                                     surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                                     Kf, Km, senesc, minMaleReproAge,
-                                     immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
-                                     genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
-  start <- Sys.time()
-  field('Date', start)
-  field('iterations', iter)
-  field('years', years)
-  immPop_subset <- immPop
-  
-  cSim <- function(s1, s2) {
-    s1$populations <- rbind(s1$populations, s2$populations)
-    for (subP in 1:length(s1$pop.size)) {
-      for (stage in 1:length(s1$pop.size[[subP]])) {
-        s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
-      }
-    }
-
-    s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
-    s1$extinct <- c(s1$extinct, s2$extinct)
-    s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
-    
-    for (stat in 1:length(s1$Na)) {
-      s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
-    }
-
-    for (stat in 1:length(s1$He)) {
-      s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
-    }
-    for (stat in 1:length(s1$Ho)) {
-      s1$Ho[[stat]] <- rbind.fill(s1$Ho[[stat]], s2$Ho[[stat]])
-    }
-    for (stat in 1:length(s1$IR)) {
-      s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
-    }
-    for (stat in 1:length(s1$Fis)) {
-      s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
-    }
-    s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
-    s1$Ne <- rbind.fill(s1$Ne, s2$Ne)
-    
-    return(s1)
-  }
-
-  packList <- c('methods','plyr', 'popbio', 'Rhh')
-
-  #start cluster
-  cl <- makeCluster(numCores)
-  registerDoParallel(cl, cores = numCores)
-
-  #operation
-  o <- foreach(i = 1:iter, .combine = cSim, 
-          .packages = packList, 
-          .inorder = F, .verbose = FALSE) %dopar% {
-            source('classes_IBM.R')
-            
-            # new instances of popClass
-            popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
-            
-            # fill with starting values
-            popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
-                          socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans=ageTrans)
-            
-            # simulate population
-            months <- years * 12
-            for (m in 1:months) {
-              popi$kill(surv)
-              popi$incremTime(senesc)
-              if (runif(1) <= immRate) {
-                immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
-                if (nrow(immPop_subset) == 0) immPop_subset <- immPop
-              }
-              popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
-              popi$updateBreedStat(ageTrans)
-              popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
-              #popi$kill(surv)
-              popi$updateStats(genOutput)
-              if (popi$extinct == TRUE) break
-            }
-            
-            #if (savePopulations == TRUE) sim1$field("populations", append(sim1$field("populations"), list(popi)))
-            out <- list()
-            if (savePopulations == TRUE) {
-              out$populations <- cbind(PopID = popi$popID, popi$tabIndsAll())
-            }
-            else {out$populations <- NULL}
-            
-            out$pop.size <- llply(popi$pop.size, function(x) {
-              list(Kittens = x[1,], SubAdults = x[2,], Adults = x[3,], TotalN = x[4,])
-            })
-
-            out$lambda <- popi$lambda
-            out$extinct <- popi$extinct
-            if (out$extinct)
-              out$extinctTime <- popi$time / 12
-            else {out$extinctTime <- NA}
-            
-            if (genOutput) {
-              out$Na$mean <- popi$Na[1, ]
-              out$Na$se <- popi$Na[2, ]
-
-              out$He$mean <- popi$He[1, ]
-              out$He$se <- popi$He[2, ]              
-
-              out$Ho$mean <- popi$Ho[1, ]
-              out$Ho$se <- popi$Ho[2, ]              
-
-              out$IR$mean <- popi$IR[1, ]
-              out$IR$se <- popi$IR[2, ]
-
-              out$Fis$mean <- popi$Fis[1, ]
-              out$Fis$se <- popi$Fis[2, ]
-              
-              out$PropPoly <- popi$PropPoly
-              out$Ne <- popi$Ne
-            }
-            else {
-              out$Na$mean <- NULL
-              out$Na$se <- NULL
-
-              out$He$mean <- NULL
-              out$He$se <- NULL              
-              
-              out$Ho$mean <- NULL
-              out$Ho$se <- NULL              
-              
-              out$IR$mean <- NULL
-              out$IR$se <- NULL
-              
-              out$Fis$mean <- NULL
-              out$Fis$se <- NULL
-              
-              out$PropPoly <- NULL
-              out$Ne <- NULL
-            }
-            return(out)
-          }
-  
-  #stop cluster
-  stopCluster(cl)
-  
-  # Set-up list structure for outputs stats
-  field('populations', o$populations)
-  field('pop.size', o$pop.size)
-  field('Na', list(mean = o$Na$mean, se = o$Na$se))
-  field('Ne', o$Ne)
-  field('He', list(mean = o$He$mean, se = o$He$se))
-  field('Ho', list(mean = o$Ho$mean, se = o$Ho$se))
-  field('IR', list(mean = o$IR$mean, se = o$IR$se))
-  field('Fis', list(mean = o$Fis$mean, se = o$Fis$se))
-  field('PropPoly', o$PropPoly)
-  field('lambda', o$lambda)
-  if (!is.null(o$extinct)) field('extinct', o$extinct)
-  field('extinctTime', o$extinctTime)
-
-  field('SimTime', (Sys.time() - start))
-  #print(paste('Computation time: ', (Sys.time() - start), sep=''))
-})
-
-simClass$methods(summary = function() {
-
-  N.iter <- field('iterations')
-  N.years <- field('years')
-  
-  # Lambda
-  EmpLambda_means <- sort(apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T)))
-  EmpLambda_mean <- mean(EmpLambda_means)
-  EmpLambda_median <- median(EmpLambda_means)
-  EmpLambda_se <- sd(EmpLambda_means) / sqrt(N.iter)
-  EmpLambda_quant <- HPDinterval(as.mcmc(EmpLambda_means), prob = 0.95, na.rm = T)
-  
-  StochLogLambda_means <- apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T))
-  StochLogLambda_mean <- mean(StochLogLambda_means)
-  StochLogLambda_median <- median(StochLogLambda_means)
-  StochLogLambda_se <- sd(StochLogLambda_means) / sqrt(N.iter)
-  StochLogLambda_quant <- HPDinterval(as.mcmc(StochLogLambda_means), prob = 0.95, na.rm = T)
-
-  # Extinction prob
-  Prob.extinct <- mean(field('extinct'))
-  Extinct.time_mean <- mean(field('extinctTime'))
-  Extinct.time_median <- mean(field('extinctTime'))
-  if (length(field('extinctTime')) > 1) {
-    Extinct.time_quant <- HPDinterval(as.mcmc(field('extinctTime')), prob = 0.95, na.rm = T)
-    eTime <- data.frame(mean = Extinct.time_mean,
-                        median = Extinct.time_median,
-                        lHPDI95 = Extinct.time_quant[1],
-                        uHPDI95 = Extinct.time_quant[2])}
-  else {
-    eTime <- data.frame(mean = Extinct.time_mean,
-                         median = Extinct.time_median,
-                         lHPDI95 = 'Inestimable',
-                         uHPDI95 = 'Inestimable') 
-    }
-  
-  # Mean final population size
-  if (((N.years * 12) + 1) == ncol(.self$pop.size$All$TotalN)) {
-    ps <- field('pop.size')
-    outSize <- llply(ps, function (x) {
-      ldply(x, function (y) {
-        y[is.na(y)] <- 0
-        mean <- mean(y[, ncol(y)])
-        se <- sd(y[, ncol(y)]) / sqrt(N.iter)
-        HPDI95 = HPDinterval(as.mcmc(y[, ncol(y)]), prob = 0.95, na.rm = T)
-        return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
-      })
-    })
-  }
-  else {outSize <- 'Final Population size = 0 since ExtinctionProb = 1'}
-
-  # Immigrant population stats
-  pps <- field('populations')
-  o <- ddply(pps, .(PopID), summarize, Immigrants = sum(immigrant), 
-             ImmRate = sum(immigrant) / years,
-             ReproductiveImm = sum(!is.na(reproHist) & immigrant),
-             ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
-  
-  mNumImm <- mean(o$Immigrants)
-  ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
-  mImmRate <- mean(o$ImmRate)
-  ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
-  mNumReproImm <- mean(o$ReproductiveImm)
-  ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
-  mImmReproRate <- mean(o$ReproImmRate)
-  ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
-  r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
-  r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
-  r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
-  r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
-  imm <- rbind(r1, r2, r3, r4) 
-  row.names(imm) <- c("Total Immigrants", 
-                            paste("Immigrant Rate (per ", years, " years)", sep=""),
-                            "Total Reproductive Immigrants",
-                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
-  
-  if (!is.null(.self$Na$mean) & (N.years + 1) == ncol(.self$Na$mean)) {
-    # Mean final genetics
-    outGen <- data.frame()
-    Nai <- .self$Na$mean[, N.years + 1]
-    Nei <- .self$Ne[, N.years + 1]
-    PropPolyi <- .self$PropPoly[, N.years + 1]
-    Hei <- .self$He$mean[, N.years + 1]
-    Hoi <- .self$Ho$mean[, N.years + 1]
-    IRi <- .self$IR$mean[, N.years + 1]
-    Fisi <- .self$Fis$mean[, N.years + 1]
-    
-    if (length(na.omit(Nai)) > 1) {
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Na", 
-                            mean = mean(Nai, na.rm = T), 
-                            se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Ne", 
-                            mean = mean(Nei, na.rm = T), 
-                            se = sd(Nei, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "PropPoly", 
-                            mean = mean(PropPolyi, na.rm = T), 
-                            se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "He", 
-                            mean = mean(Hei, na.rm = T), 
-                            se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Ho", 
-                            mean = mean(Hoi, na.rm = T), 
-                            se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "IR", 
-                            mean = mean(IRi, na.rm = T), 
-                            se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Fis", 
-                            mean = mean(Fisi, na.rm = T), 
-                            se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
-                            uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
-    
-      row.names(outGen) <- rep(NULL, nrow(outGen))
-    }
-    
-    else {
-      HPDI95 = 'Inestimable'
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Na", 
-                            mean = mean(Nai, na.rm = T), 
-                            se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Ne", 
-                            mean = mean(Nei, na.rm = T), 
-                            se = sd(Nei, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "PropPoly", 
-                            mean = mean(PropPolyi, na.rm = T), 
-                            se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "He", 
-                            mean = mean(Hei, na.rm = T), 
-                            se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Ho", 
-                            mean = mean(Hoi, na.rm = T), 
-                            se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "IR", 
-                            mean = mean(IRi, na.rm = T), 
-                            se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      outGen <- rbind(outGen, 
-                      cbind(stat = "Fis", 
-                            mean = mean(Fisi, na.rm = T), 
-                            se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                            lHPDI95 = HPDI95,
-                            uHPDI95 = HPDI95))
-      
-      row.names(outGen) <- rep(NULL, nrow(outGen))      
-    }
-  
-    out <- list(DateTime = field('Date'), CompTime = field('SimTime'), N.iter = N.iter, N.years = N.years,
-              Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
-                                  median = c(EmpLambda_median, exp(StochLogLambda_median)),
-                                  lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
-                                  uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
-                                  l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
-                                  u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
-                                  row.names = c("Empirical Lambda", "Stochastic Lambda")),
-              ExtinctionProb = Prob.extinct,
-              ExtinctionTime = eTime,
-              Pop.size = outSize,
-              Immigrants = imm,
-              GeneticComposition = outGen)
-  }
-  else {
-    out <- list(DateTime = field('Date'), CompTime = field('SimTime'), N.iter = N.iter, N.years = N.years,
-                Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
-                                    median = c(EmpLambda_median, exp(StochLogLambda_median)),
-                                    lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
-                                    uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
-                                    l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
-                                    u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
-                                    row.names = c("Empirical Lambda", "Stochastic Lambda")),
-                ExtinctionProb = Prob.extinct,
-                Pop.size = outSize,
-                Immigrants = imm,
-                GeneticComposition = "No genetic output generated: Check if genOutput = TRUE or if ExtinctionProb = 1")    
-  }
-  
-  out
-})
-
-simClass$methods(pullGenoSummary = function(years, genoMetric) {
-  Y <- paste("Y", years, sep="")
-  o <- list()
-  for (y in Y) {
-    oGen <- data.frame()
-    for (g in genoMetric) {
-      stat <- field(g)$mean[, y]
-      oGen <- rbind(oGen,
-                    cbind(GenoMetric = g, 
-                          mean = mean(stat, na.rm = T), 
-                          se = sd(stat, na.rm = T) / sqrt(length(stat)),
-                          lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
-                          uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
-    }
-    o[[y]] <- oGen
-  }
-  return(o)
-})
-
-simClass$methods(plot = function(fieldStat) {
-  #if (is.null(fieldStat)) fieldStat <- c('pop.size', 'lambda', 'Na', 'Ne', 'PropPoly', 'He', 'Ho', 'IR', 'Fis')
-  if (is.null(fieldStat)) fieldStat <- c('pop.size', 'PropPoly', 'Na', 'Ne', 'He', 'Ho', 'IR', 'Fis', 'lambda', 'extinctTime')
-  
-  for (p in 1:length(fieldStat)) {
-    par(ask=TRUE)
-    
-    if (fieldStat[p]=='pop.size') {
-      ps <- field('pop.size')
-      for (t in 1:length(ps)) {
-        mplots <- list()
-        for (i in 1:length(ps[[t]])) {
-          psi_mean <- apply(ps[[t]][[i]], 2, function(x) mean(x, na.rm=T))
-          psi_low <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
-          psi_hi <- apply(ps[[t]][[i]], 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
-          dat_psi <-  data.frame(month = 0:(ncol(ps[[t]][[i]])-1), psi_mean = psi_mean, psi_l95 = psi_low, psi_u95 = psi_hi)
-          erib <- aes(ymax = psi_u95, ymin = psi_l95)
-          assign(paste('ps_', names(ps[[t]])[i], sep=""), ggplot(dat_psi, aes(x=month, y=psi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-                   ggtitle(paste(names(ps)[t], 'Population', sep=' ')) +
-                   labs(x="Month", y=paste("Population Size:", names(ps[[t]])[i])) + #ylim(c(0,20)) + 
-                   theme(axis.text.x=element_text(angle=50, size=10, vjust=0.5),
-                         axis.text.y=element_text(size=10),
-                         axis.title.x = element_text(size=10, vjust=-0.65),
-                         axis.title.y = element_text(size=10, vjust=1)) 
-          )
-          mplots[[i]] <- get(paste('ps_', names(ps[[t]])[i], sep=""))
-        }
-      multiplot(plotlist=mplots, cols = 2)
-      }
-    }
-    
-    if (fieldStat[p]=='lambda') {
-      # By Emp
-      lp_Empmean <- apply(field('lambda')[, -1], 1, function(x) gm_mean(x, na.rm=T))
-      dat_lp <- data.frame(x = lp_Empmean)
-      lp1 <- ggplot(data = dat_lp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
-        aes(y = ..density..) + labs(x="Emp Lambda", y="Density") +
-        theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-              axis.title.y = element_text(size = 20, vjust = 1))
-    
-    # By Last Year
-      lp_Stochmean <- exp(apply(field('lambda')[, -1], 1, function(x) mean(log(x), na.rm=T)))
-      dat_lyp <- data.frame(x = lp_Stochmean)
-      lp2 <- ggplot(data = dat_lyp, mapping = aes(x = x)) + geom_histogram(binwidth = 0.0025) + #xlim(c(0.7, 1.1)) +
-        aes(y = ..density..) + labs(x="Stoch Lambda", y="Density") +
-        theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-              axis.title.y = element_text(size = 20, vjust = 1))
-      multiplot(lp1, lp2, cols = 1)
-      #par(ask=T) 
-    }
-    
-    if (fieldStat[p]=='extinctTime') {
-     dat_et <- data.frame(x = field('extinctTime'))
-     etp <- ggplot(data = dat_et, mapping = aes(x = x)) + geom_histogram() + #xlim(c(0.7, 1.1)) +
-       aes(y = ..density..) + labs(x="Time to Extinction (Years)", y="Density") +
-       theme(axis.title.x = element_text(size = 20, vjust = -0.65),
-             axis.title.y = element_text(size = 20, vjust = 1))
-     multiplot(etp)
-    }
-   
-    if (fieldStat[p]=='PropPoly') {
-      pp <- field(fieldStat[p])
-      pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
-      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
-      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
-      dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
-      erib <- aes(ymax = pp_u95, ymin = pp_l95)
-      #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
-      #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
-      #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
-      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-               labs(x="Year", y='Prop of Polymorphic Loci') + ylim(c(0,1)) + 
-               theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-                     axis.text.y=element_text(size=20),
-                     axis.title.x = element_text(size=20, vjust=-0.65),
-                     axis.title.y = element_text(size=20, vjust=1)) 
-      multiplot(pp1, cols=1)
-    }
-    
-    if (fieldStat[p]=='Ne') {
-      pp <- field(fieldStat[p])
-      pp_mean <- apply(pp, 2, function(x) mean(x, na.rm=T))
-      pp_low <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
-      pp_hi <- apply(pp, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
-      dat_pp <-  data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_l95 = pp_low, pp_u95 = pp_hi)
-      erib <- aes(ymax = pp_u95, ymin = pp_l95)
-      #pp_se <- apply(pp, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(pp)))
-      #dat_pp <- data.frame(year = 0:(length(pp_mean)-1), pp_mean = pp_mean, pp_se = pp_se)
-      #erib <- aes(ymax = pp_mean + pp_se, ymin = pp_mean - pp_se)
-      pp1 <- ggplot(dat_pp, aes(x=year, y=pp_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-        labs(x="Year", y='Ne') + #ylim(c(0,1)) + 
-        theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-              axis.text.y=element_text(size=20),
-              axis.title.x = element_text(size=20, vjust=-0.65),
-              axis.title.y = element_text(size=20, vjust=1)) 
-      multiplot(pp1, cols=1)
-    }
-    
-    if (fieldStat[p]=='Na' | fieldStat[p]=='He' | fieldStat[p]=='Ho' | fieldStat[p] =='IR' | fieldStat[p]=='Fis') {
-      fi <- field(fieldStat[p])$mean
-      fi_mean <- apply(fi, 2, function(x) mean(x, na.rm=T))
-      fi_low <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[1])
-      fi_hi <- apply(fi, 2, function(x) HPDinterval(as.mcmc(x), prob = 0.95, na.rm=T)[2])
-      dat_fi <-  data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_l95 = fi_low, fi_u95 = fi_hi)
-      erib <- aes(ymax = fi_u95, ymin = fi_l95)
-      #fi_se <- apply(fi, 2, function(x) sd(x, na.rm=T) / sqrt(nrow(fi)))
-      #dat_fi <- data.frame(year = 0:(length(fi_mean)-1), fi_mean = fi_mean, fi_se = fi_se)
-      #erib <- aes(ymax = fi_mean + fi_se, ymin = fi_mean - fi_se)
-      fi1 <- ggplot(dat_fi, aes(x=year, y=fi_mean)) + geom_line(size=1.05) + geom_ribbon(erib, alpha=0.5) +
-        labs(x="Year", y=fieldStat[p]) + #ylim(c(0,1)) + 
-        theme(axis.text.x=element_text(angle=50, size=20, vjust=0.5),
-              axis.text.y=element_text(size=20),
-              axis.title.x = element_text(size=20, vjust=-0.65),
-              axis.title.y = element_text(size=20, vjust=1)) 
-      multiplot(fi1, cols=1)
-    }
-
-  }
-})
-
-simClass$methods(immigrants = function () {
-  y <- field('years')
-  ps <- field('populations')
-  
-  o <- ddply(ps, .(PopID), summarize, Immigrants = sum(immigrant), 
-             ImmRate = sum(immigrant) / years,
-             ReproductiveImm = sum(!is.na(reproHist) & immigrant),
-             ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
-  
-  mNumImm <- mean(o$Immigrants)
-  ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
-  mImmRate <- mean(o$ImmRate)
-  ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
-  mNumReproImm <- mean(o$ReproductiveImm)
-  ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
-  mImmReproRate <- mean(o$ReproImmRate)
-  ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
-  r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
-  r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
-  r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
-  r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
-  o.summary <- rbind(r1, r2, r3, r4) 
-  row.names(o.summary) <- c("Total Immigrants", 
-                            paste("Immigrant Rate (per ", years, " years)", sep=""),
-                            "Total Reproductive Immigrants",
-                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
-  
-  o.list <- list(summary = o.summary, byPop = o)
-  return(o.list)
-})
+#########################
+## Test Code
+#########################
+#ID='animID'
+#sex='sex'
+#age='age'
+#mother='mother'
+#father='father'
+#socialStat='socialStat'
+#reproStat='reproStat'
