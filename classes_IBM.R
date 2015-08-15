@@ -1011,7 +1011,7 @@ simClass$methods(startParSim = function(numCores = detectCores(), iter, years, s
             out$extinct <- popi$extinct
             if (out$extinct)
               out$extinctTime <- popi$time / 12
-            else {out$extinctTime <- NA}
+            else {out$extinctTime <- NA_real_}
             
             if (genOutput) {
               out$Na$mean <- popi$Na[1, ]
