@@ -187,18 +187,34 @@ simClass <- R6Class('simClass',
         
         # simulate population
         months <- years * 12
+       # ent = Sys.time()
         for (m in 1:months) {
+          print(paste('Step:', m/12))
           popi$kill(surv)
           popi$incremTime(senesc)
           if (runif(1) <= immRate) {
             immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
             if (nrow(immPop_subset) == 0) immPop_subset <- immPop
           }
+        #  start = Sys.time()
           popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
+        #  print(paste('Computation time (Stage Adjust): ', (Sys.time() - start), sep=''))
+          
+        #  start = Sys.time()
           popi$updateBreedStat(ageTrans)
+        #  print(paste('Computation time (Breed Status): ', (Sys.time() - start), sep=''))
+          
+        #  start = Sys.time()
           popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+        #  print(paste('Computation time (Reproduce): ', (Sys.time() - start), sep=''))
+          
+        #  start = Sys.time()
           popi$updateStats(genOutput)
+        #  print(paste('Computation time (Update Stats): ', (Sys.time() - start), sep=''))
+          
+          
           if (popi$extinct == TRUE) break
+        #  print(paste('Total Time: ', Sys.time() - ent, sep=''))
         }
         
         if (savePopulations == TRUE) 
@@ -236,7 +252,6 @@ simClass <- R6Class('simClass',
       }
       
       self$SimTime <- (Sys.time() - start)
-      #print(paste('Computation time: ', (Sys.time() - start), sep=''))
     },
     
     startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
@@ -934,10 +949,10 @@ popClass <- R6Class('popClass',
       }
     
       # update extinction
-      if (op$All[4, 1] <= 1) field('extinct', TRUE)
+      if (op$All[4, 1] <= 1) self$extinct <- TRUE
       else {
-        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) field('extinct', TRUE)
-        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) field('extinct', TRUE)
+        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) self$extinct <- TRUE
+        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) self$extinct <- TRUE
       }
     
       if ((self$time/12)%%1 == 0) {
@@ -1184,7 +1199,7 @@ popClass <- R6Class('popClass',
         }
       }
       
-      #  If now adult or subadult males of the appropriate age, allow younger males to move up
+      #  If no adult or subadult males of the appropriate age, allow younger males to move up
       if (length(tsubAdultMAlive) == 0 & length(adultMalesAlive) == 0) {
         tsaMAlive <- llply(iAlive, function(x) if (x$socialStat=='SubAdult' & x$sex == 'M' &
                                                    x$age >= minMaleReproAge) x)
@@ -1268,8 +1283,6 @@ popClass <- R6Class('popClass',
       # Pull reproductive adults
       f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
       m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-      #f_alive <- llply(popi$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-      #m_alive <- llply(popi$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
       f_alive <- f_alive[!sapply(f_alive, is.null)]  
       m_alive <- m_alive[!sapply(m_alive, is.null)]  
       
@@ -1281,13 +1294,19 @@ popClass <- R6Class('popClass',
             mate <- sample(m_alive, size = 1)
             
             # Generate number of kitts
-            numKitts <- littSize(litterProbs)
+            #numKitts <- littSize(litterProbs)
+            #if (signif(sum(litterProbs$prob)) != 1) 
+            #  stop("Litter size probabilities must sum to 1")
+            indProb <- runif(1)
+            high <- min(which(litterProbs$cumProbs > indProb))
+            numKitts <- litterProbs[high, 'LitterSize']
             
             # Breed
             #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
             f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, self)
           }
         }
+        self$pullAlive()
       }
     },
     
@@ -1422,7 +1441,7 @@ indClass <- R6Class('indClass',
       }
       
       # update individuals alive
-      population$pullAlive()
+      #population$pullAlive()
       
       # update activeLitters
       population$activeLitters <- append(population$activeLitters, 
