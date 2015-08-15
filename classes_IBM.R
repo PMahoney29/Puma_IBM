@@ -279,7 +279,7 @@ indClass$methods(femBreed = function(male, numKittens, probFemaleKitt, lociNames
   }
   
   # update individuals alive
-  population$pullAlive()
+  #population$pullAlive()
   
   # update activeLitters
   population$activeLitters <- append(population$activeLitters, 
@@ -649,6 +649,7 @@ popClass$methods(reproduce = function(litterProbs,probBreed,probFemaleKitt,lociN
         f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, .self)
       }
     }
+    .self$pullAlive()
   }
 })
 
@@ -1096,7 +1097,7 @@ simClass$methods(summary = function() {
   Prob.extinct <- mean(field('extinct'))
   Extinct.time_mean <- mean(field('extinctTime'))
   Extinct.time_median <- mean(field('extinctTime'))
-  if (length(field('extinctTime')) > 1) {
+  if (length(na.omit(field('extinctTime'))) > 1) {
     Extinct.time_quant <- HPDinterval(as.mcmc(field('extinctTime')), prob = 0.95, na.rm = T)
     eTime <- data.frame(mean = Extinct.time_mean,
                         median = Extinct.time_median,
