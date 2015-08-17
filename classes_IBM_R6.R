@@ -470,81 +470,98 @@ simClass <- R6Class('simClass',
                  ReproductiveImm = sum(!is.na(reproHist) & immigrant),
                  ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
       
-      mNumImm <- mean(o$Immigrants)
-      ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
-      mImmRate <- mean(o$ImmRate)
-      ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
-      mNumReproImm <- mean(o$ReproductiveImm)
-      ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
-      mImmReproRate <- mean(o$ReproImmRate)
-      ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
-      r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
-      r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
-      r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
-      r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
-      imm <- rbind(r1, r2, r3, r4) 
-      row.names(imm) <- c("Total Immigrants", 
-                          paste("Immigrant Rate (per ", years, " years)", sep=""),
-                          "Total Reproductive Immigrants",
-                          paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
-      
-      if (!is.null(self$Na$mean) & (N.years + 1) == ncol(self$Na$mean)) {
-        # Mean final genetics
-        outGen <- data.frame()
-        Nai <- self$Na$mean[, N.years + 1]
-        Nei <- self$Ne[, N.years + 1]
-        PropPolyi <- self$PropPoly[, N.years + 1]
-        Hei <- self$He$mean[, N.years + 1]
-        Hoi <- self$Ho$mean[, N.years + 1]
-        IRi <- self$IR$mean[, N.years + 1]
-        Fisi <- self$Fis$mean[, N.years + 1]
+      if(!is.null(o)) {
+        mNumImm <- mean(o$Immigrants)
+        ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
+        mImmRate <- mean(o$ImmRate)
+        ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
+        mNumReproImm <- mean(o$ReproductiveImm)
+        ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
+        mImmReproRate <- mean(o$ReproImmRate)
+        ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
+        r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
+        r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
+        r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
+        r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
+        imm <- rbind(r1, r2, r3, r4) 
+        row.names(imm) <- c("Total Immigrants", 
+                            paste("Immigrant Rate (per ", years, " years)", sep=""),
+                            "Total Reproductive Immigrants",
+                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+      }
+      else {
+        r1 <- 'N/A'
+        r2 <- 0
+        r3 <- 'N/A'
+        r4 <- 'N/A'
         
-        if (length(na.omit(Nai)) > 1) {
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Na", 
-                                mean = mean(Nai, na.rm = T), 
-                                se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Ne", 
-                                mean = mean(Nei, na.rm = T), 
-                                se = sd(Nei, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "PropPoly", 
-                                mean = mean(PropPolyi, na.rm = T), 
-                                se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "He", 
-                                mean = mean(Hei, na.rm = T), 
-                                se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Ho", 
-                                mean = mean(Hoi, na.rm = T), 
-                                se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "IR", 
-                                mean = mean(IRi, na.rm = T), 
-                                se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Fis", 
-                                mean = mean(Fisi, na.rm = T), 
-                                se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
-                                uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
+        imm <- rbind(r1, r2, r3, r4) 
+        row.names(imm) <- c("Total Immigrants", 
+                            paste("Immigrant Rate (per ", years, " years)", sep=""),
+                            "Total Reproductive Immigrants",
+                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+      }
+      
+      #if (!is.null(self$Na$mean) & (N.years + 1) == ncol(self$Na$mean)) {
+      if (!is.null(self$Na$mean)) {
+        if ((N.years + 1) == ncol(self$Na$mean)) {
+      
+          # Mean final genetics
+          outGen <- data.frame()
+          Nai <- self$Na$mean[, N.years + 1]
+          Nei <- self$Ne[, N.years + 1]
+          PropPolyi <- self$PropPoly[, N.years + 1]
+          Hei <- self$He$mean[, N.years + 1]
+          Hoi <- self$Ho$mean[, N.years + 1]
+          IRi <- self$IR$mean[, N.years + 1]
+          Fisi <- self$Fis$mean[, N.years + 1]
+        
+          if (length(na.omit(Nai)) > 1) {
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Na", 
+                                  mean = mean(Nai, na.rm = T), 
+                                  se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(Nai), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Ne", 
+                                  mean = mean(Nei, na.rm = T), 
+                                  se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(Nei), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "PropPoly", 
+                                  mean = mean(PropPolyi, na.rm = T), 
+                                  se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(PropPolyi), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "He", 
+                                  mean = mean(Hei, na.rm = T), 
+                                  se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(Hei), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Ho", 
+                                  mean = mean(Hoi, na.rm = T), 
+                                  se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "IR", 
+                                  mean = mean(IRi, na.rm = T), 
+                                  se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Fis", 
+                                  mean = mean(Fisi, na.rm = T), 
+                                  se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
           
-          row.names(outGen) <- rep(NULL, nrow(outGen))
-        }
+            row.names(outGen) <- rep(NULL, nrow(outGen))
+          }
         
         else {
           HPDI95 = 'Inestimable'
@@ -607,6 +624,7 @@ simClass <- R6Class('simClass',
                     Pop.size = outSize,
                     Immigrants = imm,
                     GeneticComposition = outGen)
+        }
       }
       else {
         out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
