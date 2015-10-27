@@ -156,7 +156,7 @@ simClass <- R6Class('simClass',
     
     startSim = function(iter, years, startValues, lociNames, genoCols, 
                         surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                        Kf, Km, senesc, minMaleReproAge, 
+                        Kf, Km, senesc, minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
                         immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                         genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
       start <- Sys.time()
@@ -201,7 +201,7 @@ simClass <- R6Class('simClass',
         #  print(paste('Computation time (Stage Adjust): ', (Sys.time() - start), sep=''))
           
         #  start = Sys.time()
-          popi$updateBreedStat(ageTrans)
+          popi$updateBreedStat(ageTrans, maxN_ReproMale)
         #  print(paste('Computation time (Breed Status): ', (Sys.time() - start), sep=''))
           
         #  start = Sys.time()
@@ -256,7 +256,7 @@ simClass <- R6Class('simClass',
     
     startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
                            surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                           Kf, Km, senesc, minMaleReproAge,
+                           Kf, Km, senesc, minMaleReproAge,maxN_ReproMale = maxN_ReproMale,
                            immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
                            genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
       start <- Sys.time()
@@ -328,7 +328,7 @@ simClass <- R6Class('simClass',
                          if (nrow(immPop_subset) == 0) immPop_subset <- immPop
                        }
                        popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
-                       popi$updateBreedStat(ageTrans)
+                       popi$updateBreedStat(ageTrans, maxN_ReproMale)
                        popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
                        #popi$kill(surv)
                        popi$updateStats(genOutput)
@@ -1207,7 +1207,7 @@ popClass <- R6Class('popClass',
           samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
           invisible(llply(tsubAdultMAlive[samp], function(x) {
             x$socialStat = 'Adult'
-            x$reproStat = TRUE
+            #x$reproStat = TRUE
           }))
           invisible(llply(tsubAdultMAlive[-samp], function(x) {
             x$liveStat = FALSE
@@ -1230,7 +1230,7 @@ popClass <- R6Class('popClass',
           samp <- sample(1:length(tsaMAlive), size = sampM.size)
           invisible(llply(tsaMAlive[samp], function(x) {
             x$socialStat = 'Adult'
-            x$reproStat = TRUE
+            #x$reproStat = TRUE
           }))
         }
       }
@@ -1238,7 +1238,24 @@ popClass <- R6Class('popClass',
       self$pullAlive()
     },
     
-    updateBreedStat = function(ageTrans) {
+    updateBreedStat = function(ageTrans, maxN_ReproMale) {
+      
+      # Update male breed stat
+      m_repro <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      m_repro <- m_repro[!sapply(m_repro, is.null)]  
+      
+      if (length(m_repro) < 1) {
+        m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult") x)
+        m_alive <- m_alive[!sapply(m_alive, is.null)]  
+        
+        if (length(m_alive) > 0) {
+          invisible(llply(sample(m_alive, size = maxN_ReproMale), function(x) {
+            x$reproStat = TRUE
+          }))
+        }
+      }
+      
+      ## Females with litters
       aL <- self$activeLitters
       
       # Adjust litters based on mortality of mother
