@@ -30,6 +30,7 @@ litterProbs$cumProbs <- cumsum(litterProbs$prob)
 probFemaleKitt <- 0.5
 senesc <- 15
 minMaleReproAge <- 36  # in months
+maxN_ReproMale <- 1
 
 # Sex specific carrying capacity K
 Kf <- matrix(c(6, 1, 0), nrow=1)
@@ -40,15 +41,15 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 3
-years = 25
+iter = 4
+years = 50
 numCores <- detectCores() - 1
 
 # Run model in serial
 sim1 <- simClass$new()
 sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge,
+              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
@@ -56,7 +57,7 @@ sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames =
 sim1 <- simClass$new()
 sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge,
+              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
@@ -66,7 +67,7 @@ sim1$plot(fieldStat=c('lambda', 'extinctTime', 'Na'))
 #sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
-matplot2(as.matrix(sim1$pop.size$All$TotalN[1:100,]))
+matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
 
 # Pull genetic values for a given year
     yrs = c(0, 25) #, 50)
