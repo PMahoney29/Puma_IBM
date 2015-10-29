@@ -433,8 +433,8 @@ simClass <- R6Class('simClass',
       
       # Extinction prob
       Prob.extinct <- mean(self$extinct)
-      Extinct.time_mean <- mean(self$extinctTime)
-      Extinct.time_median <- mean(self$extinctTime)
+      Extinct.time_mean <- mean(self$extinctTime, na.rm=T)
+      Extinct.time_median <- median(self$extinctTime, na.rm=T)
       if (length(na.omit(self$extinctTime)) > 1) {
         Extinct.time_quant <- HPDinterval(as.mcmc(self$extinctTime), prob = 0.95, na.rm = T)
         eTime <- data.frame(mean = Extinct.time_mean,
