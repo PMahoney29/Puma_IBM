@@ -1245,13 +1245,22 @@ popClass <- R6Class('popClass',
       m_repro <- m_repro[!sapply(m_repro, is.null)]  
       
       if (length(m_repro) < maxN_ReproMale) {
-        m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult") x)
-        m_alive <- m_alive[!sapply(m_alive, is.null)]  
+        m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==FALSE) x)
+        m_alive <- m_alive[!sapply(m_alive, is.null)] 
         
-        if (length(m_alive) > 0) {
-          invisible(llply(sample(m_alive, size = (maxN_ReproMale - length(m_repro))), function(x) {
-            x$reproStat = TRUE
-          }))
+        if (length(m_alive) != 0) {
+          nMales <- maxN_ReproMale - length(m_repro)
+
+          if (length(m_alive) > nMales) {
+            invisible(llply(sample(m_alive, size = nMales), function(x) {
+              x$reproStat = TRUE
+            }))
+          }
+          else {
+            invisible(llply(m_alive, function(x) {
+              x$reproStat = TRUE
+            })) 
+          }
         }
       }
       
