@@ -650,13 +650,25 @@ simClass <- R6Class('simClass',
       for (y in Y) {
         oGen <- data.frame()
         for (g in genoMetric) {
-          stat <- self[[g]]$mean[, y]
-          oGen <- rbind(oGen,
-                        cbind(GenoMetric = g, 
-                              mean = mean(stat, na.rm = T), 
-                              se = sd(stat, na.rm = T) / sqrt(length(stat)),
-                              lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
-                              uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+          if (g == 'PropPoly' | g == 'Ne') {
+            stat <- self[[g]][, y]
+            oGen <- rbind(oGen,
+                          cbind(GenoMetric = g, 
+                                mean = mean(stat, na.rm = T), 
+                                se = sd(stat, na.rm = T) / sqrt(length(stat)),
+                                lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+          }
+          
+          else {
+            stat <- self[[g]]$mean[, y]
+            oGen <- rbind(oGen,
+                          cbind(GenoMetric = g, 
+                                mean = mean(stat, na.rm = T), 
+                                se = sd(stat, na.rm = T) / sqrt(length(stat)),
+                                lHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[1],
+                                uHPDI95 = HPDinterval(as.mcmc(stat), prob = 0.95, na.rm = T)[2]))
+          }
         }
         o[[y]] <- oGen
       }
