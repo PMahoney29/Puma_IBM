@@ -28,6 +28,82 @@ filename <- 'classes_IBM_R6.R'
 ##   general functions   ##
 ###########################
 
+# Combine output from multiple simulation runs
+combineSims <- function(simObjects) {
+  s_out <- simClass$new()
+  #s_out <<- simObjects[[1]]
+  #s_out$populations$PopID <- paste('Run1_', s_out$populations$PopID, sep='')
+  for (s in 1:length(simObjects)) {
+    if (s==1) {
+      s_out$Date <- simObjects[[s]]$Date
+      s_out$SimTime <- simObjects[[s]]$SimTime
+      s_out$iterations <- simObjects[[s]]$iterations
+      s_out$years <- simObjects[[s]]$years
+      
+      simObjects[[s]]$populations$PopID <- paste('Run', s, '_', simObjects[[s]]$populations$PopID, sep='')
+      s_out$populations <- simObjects[[s]]$populations
+      
+      s_out$pop.size <- simObjects[[s]]$pop.size
+      s_out$lambda <- simObjects[[s]]$lambda
+      s_out$extinct <- simObjects[[s]]$extinct
+      s_out$extinctTime <- simObjects[[s]]$extinctTime
+      s_out$Na <- simObjects[[s]]$Na
+      s_out$Ne <- simObjects[[s]]$Ne
+      s_out$PropPoly <- simObjects[[s]]$PropPoly
+      s_out$He <- simObjects[[s]]$He
+      s_out$Ho <- simObjects[[s]]$Ho
+      s_out$IR <- simObjects[[s]]$IR
+      s_out$Fis <- simObjects[[s]]$Fis
+    }
+    else {
+      s_out$Date <- c(s_out$Date, simObjects[[s]]$Date)
+      s_out$SimTime <- c(s_out$SimTime, simObjects[[s]]$SimTime)
+      s_out$iterations <- c(s_out$iterations, simObjects[[s]]$iterations)
+
+      simObjects[[s]]$populations$PopID <- paste('Run', s, '_', simObjects[[s]]$populations$PopID, sep='')
+      s_out$populations <- rbind(s_out$populations, simObjects[[s]]$populations)
+      
+      if(s_out$years[1] != simObjects[[s]]$years) stop(simpleError('Projection lengths do not match!'))
+      for (sex in 1:length(s_out$pop.size)) {
+        for (stage in 1:length(s_out$pop.size[[sex]])) {
+          s_out$pop.size[[sex]][[stage]] <- rbind(s_out$pop.size[[sex]][[stage]], 
+                                                simObjects[[s]]$pop.size[[sex]][[stage]])
+        }
+      }
+      s_out$lambda <- rbind(s_out$lambda, simObjects[[s]]$lambda)
+      s_out$extinct <- c(s_out$extinct, simObjects[[s]]$extinct)
+      s_out$extinctTime <- c(s_out$extinctTime, simObjects[[s]]$extinctTime)
+      
+      for (na in 1:2) {
+        s_out$Na[[na]] <- rbind(s_out$Na[[na]], simObjects[[s]]$Na[[na]])
+      }
+      
+      s_out$Ne <- rbind(s_out$Ne, simObjects[[s]]$Ne)
+      
+      s_out$PropPoly <- rbind(s_out$PropPoly, simObjects[[s]]$PropPoly) 
+      
+      for (he in 1:2) {
+        s_out$He[[he]] <- rbind(s_out$He[[he]], simObjects[[s]]$He[[he]])
+      } 
+      
+      for (ho in 1:2) {
+        s_out$Ho[[ho]] <- rbind(s_out$Ho[[ho]], simObjects[[s]]$Ho[[ho]])
+      } 
+      
+      for (ir in 1:2) {
+        s_out$IR[[ir]] <- rbind(s_out$IR[[ir]], simObjects[[s]]$IR[[ir]])
+      } 
+      
+      for (fis in 1:2) {
+        s_out$Fis[[fis]] <- rbind(s_out$Fis[[fis]], simObjects[[s]]$Fis[[fis]])
+      } 
+    }
+
+  }
+  s_out$iterations <- sum(s_out$iterations)
+  return(s_out)
+}
+
 # Derive environmentally stochastic survival rates for each time step
 newSurv <- function(surv) {
   ##############################################
