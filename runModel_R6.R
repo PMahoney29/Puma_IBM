@@ -10,6 +10,7 @@ source('classes_IBM_R6.R')
 
 # Starting values
 startValues <- read.csv('./Data/genotypes/startValuesFINAL.csv', stringsAsFactors=F)
+  #startValues$reproStat[5] <- F
 lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
 genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
 
@@ -41,7 +42,7 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 4
+iter = 5000
 years = 50
 numCores <- detectCores() - 1
 
@@ -54,12 +55,14 @@ sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames =
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
 
 # Run model in parallel
+set.seed(1000)
 sim1 <- simClass$new()
 sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
               Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
+save.image('NoImm_2by1.Rdata')
 
 # Display summary statistics
 sim1$summary()
@@ -71,7 +74,7 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
 
 # Pull genetic values for a given year
     yrs = c(0, 25) #, 50)
-    genoMetric = c("Na",'He', 'Ho')
+    genoMetric = c("Na",'He', 'Ho', 'PropPoly')
     sim1$pullGenoSummary(yrs, genoMetric)
 
     
@@ -82,3 +85,22 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
     sim1$immigrants()$byPop
       #or
     sim1$summary()
+    
+# Bootstrap extinction probability
+    library(boot)
+    
+    # bootstrapping with 1000 replications
+    extinctions <- as.numeric(sim1$extinct)   #change sim1 to the name of the sim object
+    extProb <- function(d, i) {
+      nd <- d[i]
+      return(mean(nd))
+    }
+    out <- boot(data=extinctions, statistic=extProb, R=50000, stype='i')
+    
+    # view results
+    out
+    plot(out)
+    
+    # get 95% confidence interval
+    boot.ci(out, conf=0.95, type=c("basic", 'perc'))
+    
