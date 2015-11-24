@@ -103,4 +103,31 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
     
     # get 95% confidence interval
     boot.ci(out, conf=0.95, type=c("basic", 'perc'))
+
+# Bootstrap extinction probability, HPDI
+    library(coda)
     
+    # HPDI bootstrapping function
+    bootHPD <- function(dStat, reps = 10000, prob = 0.95) {
+      mSamp <- c()
+      for (r in 1:reps) {
+        samp <- sample(extinctions, replace=T)
+        mSamp <- c(mSamp, mean(samp))
+      }
+      return(HPDinterval(as.mcmc(mSamp), prob = prob, na.rm = T))
+    }
+  
+    # bootstrapping with 10000 replications
+    extinctions <- as.numeric(sim1$extinct)   #change sim1 to the name of the sim object
+    bootHPD(extinctions, reps=50000, prob = 0.95)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        
