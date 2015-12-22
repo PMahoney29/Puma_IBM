@@ -908,6 +908,7 @@ popClass <- R6Class('popClass',
     indsAll = NA,
     indsAlive = NA,
     activeLitters = NA,
+    activePairs = NA,
     time = 0,
     pop.size = NA,
     lambda = NA,
@@ -989,6 +990,18 @@ popClass <- R6Class('popClass',
       }
       
       self$activeLitters <- aLit
+      
+      # Start breeding males list
+      aMales <- llply(iAlive, function (x) if (x$socialStat == 'Adult' & x$sex == 'M') x)
+      aMales <- aMales[!sapply(aMales, is.null)]
+      nPairs <- list()
+      for (aM in aMales) {
+        Male <- aM
+        Females <- list()
+        newPair <- list(Male = Male, Females = Females)
+        nPairs <- append(nPairs, list(newPair))
+      }
+      self$activePairs <- nPairs
       
       # Update stats
       self$updateStats(genOutput)
@@ -1413,17 +1426,53 @@ popClass <- R6Class('popClass',
       tPB <- betaval(probBreed$prob, probBreed$se)
       
       # Pull reproductive adults
-      f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
       m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-      f_alive <- f_alive[!sapply(f_alive, is.null)]  
       m_alive <- m_alive[!sapply(m_alive, is.null)]  
       
+      ######################
+      ### Managing pairs ###
+      ######################
+      aPairs <- self$activePairs
+      
+        # Males
+      alive <- unlist(llply(1:length(aPairs), function(x) aPairs[[x]]$Male$liveStat))
+      new_males_ind <- which(!(m_alive %in% llply(aPairs, function(x) x$Male)))
+        
+        # Replace dead males
+      if (any(!alive)) {
+        dead_index <- which(!alive)
+        for (di in dead_index) {
+          if (any(new_males_ind)) {
+            aPairs[[di]]$Male <- m_alive[[new_males_ind[1]]]
+            new_males_ind <- new_males_ind[-1]            
+          }
+          else {aPairs[[di]]$Male <- list()}
+        }
+      }
+      
+        # Add new males
+      if (any(new_males_ind)) {
+        for (nm in new_males_ind) {
+          aPairs <- append(aPairs, list(list(Male = m_alive[[nm]], Females = list())))
+        }           
+      }     
+      
+        # Females
+      #f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult") x)
+      f_alive <- f_alive[!sapply(f_alive, is.null)] 
+      new_females_ind <- which(!(f_alive %in% llply(aPairs, function(x) x$Females)))
+      
+        # Remove dead females
+
+      
+      ## Produce new litters
       #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
       if (length(f_alive) != 0 & length(m_alive) != 0) {
         for (f in length(f_alive):1) {
           if (runif(1) <= tPB) {
             # Select male mate
-            mate <- sample(m_alive, size = 1)
+            mate <- sample(m_alive, size = 1)  # For random mating
             
             # Generate number of kitts
             #numKitts <- littSize(litterProbs)
