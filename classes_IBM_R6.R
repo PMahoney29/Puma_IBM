@@ -1422,71 +1422,128 @@ popClass <- R6Class('popClass',
     },
     
     reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames) {
-      # Generate monthly probability of breeding
-      tPB <- betaval(probBreed$prob, probBreed$se)
-      
-      # Pull reproductive adults
-      m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
-      m_alive <- m_alive[!sapply(m_alive, is.null)]  
-      
       ######################
       ### Managing pairs ###
       ######################
       aPairs <- self$activePairs
       
         # Males
-      alive <- unlist(llply(1:length(aPairs), function(x) aPairs[[x]]$Male$liveStat))
-      new_males_ind <- which(!(m_alive %in% llply(aPairs, function(x) x$Male)))
-        
-        # Replace dead males
-      if (any(!alive)) {
-        dead_index <- which(!alive)
-        for (di in dead_index) {
-          if (any(new_males_ind)) {
-            aPairs[[di]]$Male <- m_alive[[new_males_ind[1]]]
-            new_males_ind <- new_males_ind[-1]            
-          }
-          else {aPairs[[di]]$Male <- list()}
-        }
-      }
-      
-        # Add new males
-      if (any(new_males_ind)) {
-        for (nm in new_males_ind) {
-          aPairs <- append(aPairs, list(list(Male = m_alive[[nm]], Females = list())))
-        }           
-      }     
-      
-        # Females
-      #f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
+      m_alive <- m_alive[!sapply(m_alive, is.null)]
       f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult") x)
       f_alive <- f_alive[!sapply(f_alive, is.null)] 
-      new_females_ind <- which(!(f_alive %in% llply(aPairs, function(x) x$Females)))
-      
-        # Remove dead females
 
-      
-      ## Produce new litters
-      #if (length(f_alive) == 0 | length(m_alive) == 0) field('extinct', TRUE)
-      if (length(f_alive) != 0 & length(m_alive) != 0) {
-        for (f in length(f_alive):1) {
-          if (runif(1) <= tPB) {
-            # Select male mate
-            mate <- sample(m_alive, size = 1)  # For random mating
-            
-            # Generate number of kitts
-            #numKitts <- littSize(litterProbs)
-            #if (signif(sum(litterProbs$prob)) != 1) 
-            #  stop("Litter size probabilities must sum to 1")
-            indProb <- runif(1)
-            high <- min(which(litterProbs$cumProbs > indProb))
-            numKitts <- litterProbs[high, 'LitterSize']
-            
-            # Breed
-            #f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, pop1)
-            f_alive[[f]]$femBreed(mate[[1]], numKitts, probFemaleKitt, lociNames, self)
+      if (length(f_alive) > 0 & length(m_alive) > 0) {
+        m_aliveIDs <- llply(m_alive, function(x) x$animID)
+        m_InPairs <- llply(aPairs, function(x) x$Male$animID)
+        new_males_ind <- which(!m_aliveIDs %in% m_InPairs)
+
+          # Replace dead males
+        for (aP in length(aPairs):1) {
+          if (aPairs[[aP]]$Male$liveStat == F) {
+            if (any(new_males_ind)) {
+              aPairs[[aP]]$Male <- m_alive[[new_males_ind[1]]]
+              new_males_ind <- new_males_ind[-1]            
+            }
+            else {aPairs[[aP]] <- NULL}
           }
         }
+
+          # Add new males
+        if (any(new_males_ind)) {
+          for (nm in new_males_ind) {
+            aPairs <- append(aPairs, list(list(Male = m_alive[[nm]], Females = list())))
+          }           
+        }     
+      
+          # Females
+        f_aliveIDs <- llply(f_alive, function(x) x$animID)
+        f_InPairs <- unlist(llply(aPairs, function(x) x$Females))
+        f_InPairsIDs <- llply(f_InPairs, function(x) x$animID)
+        new_females_ind <- which(!f_aliveIDs %in% f_InPairsIDs)
+
+          # Replace dead females
+        for (aP in length(aPairs):1) {
+          femsAlive <- unlist(llply(aPairs[[aP]]$Females, function(x) x$liveStat))
+        
+          if(!is.null(femsAlive)) {
+            if(any(!femsAlive)) {
+              
+              femsAliveI <- which(!femsAlive)
+              for (fA in length(femsAliveI):1) {
+                if (any(new_females_ind)) {
+                  aPairs[[aP]]$Females[[femsAliveI[fA]]] <- f_alive[[new_females_ind[1]]]
+                  new_females_ind <- new_females_ind[-1]            
+                }
+                else {aPairs[[aP]]$Females[[femsAliveI[fA]]] <- NULL}
+              }
+              
+            }
+          }
+        }
+
+          # Reduce harem size
+        harems <- llply(1:length(aPairs), function(x) length(aPairs[[x]]$Females))
+        maxHarem <- ceiling(length(f_alive) / length(harems))
+        nI_harems <-  unlist(llply(harems, function(x) maxHarem - x))
+      
+        if (any(nI_harems < 0)) {
+          reduceI <- which(nI_harems < 0)
+          vacFem <- list()
+          
+          for (rI in reduceI) {
+            vF <<- aPairs[[rI]]$Females[(harems[[rI]]+nI_harems[rI]+1):harems[[rI]]]
+            vacFem <- append(vacFem, vF)
+            aPairs[[rI]]$Females[(harems[[rI]]+nI_harems[rI]+1):harems[[rI]]] <- NULL
+          }
+          
+          vacFem <- llply(vacFem, function(x) x$animID)
+          new_females_ind <- c(new_females_ind, 
+                               which(f_aliveIDs %in% vacFem))
+        }
+      
+        # Add new females      
+        if (any(new_females_ind)) {
+          #m <- rep(1:length(aPairs), length=length(new_females_ind))
+          m <- rep(1:length(aPairs), length(new_females_ind))
+          while (length(new_females_ind) > 0) {
+            if (nI_harems[m[1]] <= 0) {
+              m <- m[-1]
+              next
+            }
+            aPairs[[m[1]]]$Females <- append(aPairs[[m[1]]]$Females, f_alive[[new_females_ind[1]]])
+            new_females_ind <- new_females_ind[-1]
+            nI_harems[m[1]] <- nI_harems[m[1]] - 1
+            m <- m[-1]
+          }           
+        } 
+      
+        self$activePairs <- aPairs
+      
+        ## Produce new litters
+        # Generate monthly probability of breeding
+        tPB <- betaval(probBreed$prob, probBreed$se)
+        
+        for (aP in aPairs) {
+          if (any(unlist(llply(aP$Females, function(x) x$reproStat)))) {
+            mate <- aP$Male
+          
+            for (fem in aP$Females) {
+              if (runif(1) <= tPB & fem$reproStat==T) {
+                # Generate number of kitts
+                #numKitts <- littSize(litterProbs)
+                #if (signif(sum(litterProbs$prob)) != 1) 
+                #  stop("Litter size probabilities must sum to 1")
+                indProb <- runif(1)
+                high <- min(which(litterProbs$cumProbs > indProb))
+                numKitts <- litterProbs[high, 'LitterSize']
+              
+                # Breed
+                fem$femBreed(mate, numKitts, probFemaleKitt, lociNames, self)
+              }
+            }
+          }
+        }        
         self$pullAlive()
       }
     },
