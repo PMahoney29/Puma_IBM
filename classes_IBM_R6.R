@@ -1070,7 +1070,7 @@ popClass <- R6Class('popClass',
       # update extinction
       if (op$All[4, 1] <= 1) self$extinct <- TRUE
       else {
-        if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) self$extinct <- TRUE
+        #if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='M')))) < 1) self$extinct <- TRUE
         if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) self$extinct <- TRUE
       }
     
