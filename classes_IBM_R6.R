@@ -375,7 +375,7 @@ simClass <- R6Class('simClass',
         return(s1)
       }
       
-      packList <- c('methods','plyr', 'popbio', 'Rhh')
+      packList <- c('methods','plyr', 'popbio', 'Rhh', 'adegenet')
       
       #start cluster
       cl <- makeCluster(numCores)
@@ -1074,7 +1074,7 @@ popClass <- R6Class('popClass',
         if (sum(unlist(llply(iAlive, function(x) sum(x$sex=='F')))) < 1) self$extinct <- TRUE
       }
     
-      if ((self$time/12)%%1 == 0) {
+      if ((self$time/12)%%1 == 0 & self$extinct == FALSE) {
         # Assign year for field names
         year <- paste("Y", self$time/12, sep = "")
         
@@ -1439,13 +1439,15 @@ popClass <- R6Class('popClass',
         new_males_ind <- which(!m_aliveIDs %in% m_InPairs)
 
           # Replace dead males
-        for (aP in length(aPairs):1) {
-          if (aPairs[[aP]]$Male$liveStat == F) {
-            if (any(new_males_ind)) {
-              aPairs[[aP]]$Male <- m_alive[[new_males_ind[1]]]
-              new_males_ind <- new_males_ind[-1]            
+        if (!is.null(aPairs)) {
+          for (aP in length(aPairs):1) {
+            if (aPairs[[aP]]$Male$liveStat == F) {
+              if (any(new_males_ind)) {
+                aPairs[[aP]]$Male <- m_alive[[new_males_ind[1]]]
+                new_males_ind <- new_males_ind[-1]            
+              }
+              else {aPairs[[aP]] <- NULL}
             }
-            else {aPairs[[aP]] <- NULL}
           }
         }
 
@@ -1463,7 +1465,8 @@ popClass <- R6Class('popClass',
         new_females_ind <- which(!f_aliveIDs %in% f_InPairsIDs)
 
           # Replace dead females
-        for (aP in length(aPairs):1) {
+        #if (!is.null(aPairs)) {
+          for (aP in length(aPairs):1) {
           femsAlive <- unlist(llply(aPairs[[aP]]$Females, function(x) x$liveStat))
         
           if(!is.null(femsAlive)) {
@@ -1476,11 +1479,12 @@ popClass <- R6Class('popClass',
                   new_females_ind <- new_females_ind[-1]            
                 }
                 else {aPairs[[aP]]$Females[[femsAliveI[fA]]] <- NULL}
-              }
+                }
               
+              }
             }
           }
-        }
+        #}
 
           # Reduce harem size
         harems <- llply(1:length(aPairs), function(x) length(aPairs[[x]]$Females))
@@ -1504,7 +1508,6 @@ popClass <- R6Class('popClass',
       
         # Add new females      
         if (any(new_females_ind)) {
-          #m <- rep(1:length(aPairs), length=length(new_females_ind))
           m <- rep(1:length(aPairs), length(new_females_ind))
           while (length(new_females_ind) > 0) {
             if (nI_harems[m[1]] <= 0) {
@@ -1546,6 +1549,7 @@ popClass <- R6Class('popClass',
         }        
         self$pullAlive()
       }
+      else {self$activePairs <- NULL}
     },
     
     kill = function(surv) {
