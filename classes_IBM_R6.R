@@ -363,9 +363,9 @@ simClass <- R6Class('simClass',
         for (stat in 1:length(s1$Ho)) {
           s1$Ho[[stat]] <- rbind.fill(s1$Ho[[stat]], s2$Ho[[stat]])
         }
-        for (stat in 1:length(s1$IR)) {
-          s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
-        }
+        #for (stat in 1:length(s1$IR)) {
+        #  s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
+        #}
         for (stat in 1:length(s1$Fis)) {
           s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
         }
@@ -589,7 +589,7 @@ simClass <- R6Class('simClass',
           PropPolyi <- self$PropPoly[, N.years + 1]
           Hei <- self$He$mean[, N.years + 1]
           Hoi <- self$Ho$mean[, N.years + 1]
-          IRi <- self$IR$mean[, N.years + 1]
+          #IRi <- self$IR$mean[, N.years + 1]
           Fisi <- self$Fis$mean[, N.years + 1]
         
           if (length(na.omit(Nai)) > 1) {
@@ -623,12 +623,12 @@ simClass <- R6Class('simClass',
                                   se = sd(Hoi, na.rm = T) / sqrt(N.iter),
                                   lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
                                   uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
-            outGen <- rbind(outGen, 
-                            cbind(stat = "IR", 
-                                  mean = mean(IRi, na.rm = T), 
-                                  se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                                  lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
-                                  uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
+            #outGen <- rbind(outGen, 
+            #                cbind(stat = "IR", 
+            #                      mean = mean(IRi, na.rm = T), 
+            #                      se = sd(IRi, na.rm = T) / sqrt(N.iter),
+            #                      lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+            #                      uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
             outGen <- rbind(outGen, 
                             cbind(stat = "Fis", 
                                   mean = mean(Fisi, na.rm = T), 
@@ -671,12 +671,12 @@ simClass <- R6Class('simClass',
                                 se = sd(Hoi, na.rm = T) / sqrt(N.iter),
                                 lHPDI95 = HPDI95,
                                 uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "IR", 
-                                mean = mean(IRi, na.rm = T), 
-                                se = sd(IRi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
+          #outGen <- rbind(outGen, 
+          #                cbind(stat = "IR", 
+          #                      mean = mean(IRi, na.rm = T), 
+          #                      se = sd(IRi, na.rm = T) / sqrt(N.iter),
+          #                      lHPDI95 = HPDI95,
+          #                      uHPDI95 = HPDI95))
           outGen <- rbind(outGen, 
                           cbind(stat = "Fis", 
                                 mean = mean(Fisi, na.rm = T), 
@@ -992,7 +992,7 @@ popClass <- R6Class('popClass',
       self$activeLitters <- aLit
       
       # Start breeding males list
-      aMales <- llply(iAlive, function (x) if (x$socialStat == 'Adult' & x$sex == 'M') x)
+      aMales <- llply(iAlive, function (x) if (x$socialStat == 'Adult' & x$sex == 'M' & x$reproStat == T) x)
       aMales <- aMales[!sapply(aMales, is.null)]
       nPairs <- list()
       for (aM in aMales) {
@@ -1122,7 +1122,7 @@ popClass <- R6Class('popClass',
           self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
         
           # Individual heterozygosity IR
-          self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
+          #self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
         
           # Inbreeding coefficient Fis
           Fis_ind <- sapply(inbreeding(g_genind, N=50), mean)
@@ -1579,7 +1579,10 @@ popClass <- R6Class('popClass',
       if (length(alive) > 0) {
         for (i in 1:length(alive)) {
           alive[[i]]$age <- alive[[i]]$age + 1
-          if (alive[[i]]$age > (senesc * 12)) alive[[i]]$liveStat <- FALSE
+          if (alive[[i]]$age > (senesc * 12)) {
+            alive[[i]]$liveStat <- FALSE
+            alive[[i]]$censored <- TRUE
+          }
         }
       }
       self$pullAlive()
