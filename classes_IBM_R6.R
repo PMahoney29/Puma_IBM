@@ -158,6 +158,34 @@ gm_mean = function(x, na.rm=TRUE, zero.propagate = FALSE){
   }
 }
 
+# Pull geno metrics for year 0.
+pullGenoWithinPop = function(sim, years, genoMetric) {
+  Y <- paste("Y", years, sep="")
+  o <- list()
+  for (y in Y) {
+    oGen <- data.frame()
+    for (g in genoMetric) {
+      if (g == 'PropPoly' | g == 'Ne') {
+        if (g == 'PropPoly' | g == 'Ne') {
+          print(paste(g, ' is a population level metric.  No within population SEs can be generated for', y))
+          next
+        }
+      }
+      
+      else {
+        statMN <- sim[[g]]$mean[, y]
+        statSE <- sim[[g]]$se[, y]
+        oGen <- rbind(oGen,
+                      cbind(GenoMetric = g, 
+                            mean = mean(statMN, na.rm = T), 
+                            se = mean(statSE, na.rm=T)))
+      }
+    }
+    o[[y]] <- oGen
+  }
+  return(o)
+}
+
 # Multiple plot function
 #
 # ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
