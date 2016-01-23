@@ -16,16 +16,16 @@ genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age);
 
 # Immigrant population
 immPop <- read.csv('./Data/genotypes/immigPop.csv')
-immRate <- (1/12) / 12
+immRate <- (0/12) / 12
 immMaleProb <- 1
 
 # Demographics
-surv <- read.csv('./Data/survival//survivalMonthly.csv')
+surv <- read.csv('./Data/survival//survivalMonthlyREAL.csv')
 ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
 probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
 
   # Choose only one of the following litterProbs
-litterProbs <- read.csv('./Data/reproduction/litterProbNEW.csv')
+litterProbs <- read.csv('./Data/reproduction/litterProbREAL.csv')
 litterProbs$cumProbs <- cumsum(litterProbs$prob)
 
 probFemaleKitt <- 0.5
@@ -42,7 +42,7 @@ Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
 genOutput <- T
 savePopulations <- T
 verbose <- T
-iter = 5000
+iter = 1000
 years = 50
 numCores <- detectCores() - 1
 
@@ -62,11 +62,11 @@ sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = 
               Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
-save.image('NoImm_2by1.Rdata')
+save.image('WHATEVER.Rdata')
 
 # Display summary statistics
 sim1$summary()
-sim1$plot(fieldStat=c('lambda', 'extinctTime', 'Na'))
+sim1$plot(fieldStat=c('lambda', 'extinctTime', 'Na', 'Ho'))
 #sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
 
 # Plot projections
@@ -76,6 +76,11 @@ matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
     yrs = c(0, 25) #, 50)
     genoMetric = c("Na",'He', 'Ho', 'PropPoly')
     sim1$pullGenoSummary(yrs, genoMetric)
+    
+# Pull genetic values including within population SEs
+    yrs = c(0, 25)
+    genoMetric = c("Na",'He', 'Ho', 'Fis', 'PropPoly')
+    pullGenoWithinPop(sim1, yrs, genoMetric)
 
     
 # Pull immigrant pop data
