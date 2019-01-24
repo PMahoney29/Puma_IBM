@@ -14,6 +14,7 @@ require(methods)
 require(adegenet)
 require(plyr)
 require(popbio)
+require(stringr)
 require(Rhh)
 require(ggplot2)
 require(coda)
@@ -186,6 +187,54 @@ pullGenoWithinPop = function(sim, years, genoMetric) {
   return(o)
 }
 
+# Create translocations
+createTranslocations <- function(tPop, years, numInds, ages, femProb) {
+  if (length(years) != length(numInds) | length(years) != length(ages) |
+      length(years) != length(femProb))
+    stop('Years, numInds, ages, and femProb must be of equal lengths.')
+  
+  # Indexing and output objects
+  tid <- 1
+  o <- list()
+  o$years <- years
+  transPop <- list()
+  
+  # Assigning tPop reset
+  tPopFull <- tPop
+  
+  for (y in 1:length(years)) {
+    if (nrow(tPop) < numInds[y]) {
+      tPop <- tPopFull
+    }
+    ro <- sample(1:nrow(tPop), size = numInds[y])
+
+    # Pull geno and create new ID
+    newgeno <- tPop[ro, ]
+    ntid <- tid + numInds[y] - 1
+    newID <- paste('tid', tid:ntid, sep="")
+    tid <- ntid + 1
+    
+    # Determine sex and age of immigrant
+    sex <- ifelse(runif(numInds[y]) >= femProb[y], 'M', 'F')
+    rang <- ages[[y]]
+    if (length(rang) == 1)
+      ata <- rep(rang, numInds[y]) else 
+        ata <- sample(rang, size = numInds[y], replace = T)   
+    
+    idat <- data.frame(animID = newID, sex = sex, age = ata, newgeno, stringsAsFactors = F)
+    idat$sex <- factor(idat$sex, levels = c('F', 'M'))
+    
+    # Remove genos
+    tPop <- tPop[-ro, ]
+    
+    # Create output
+    transPop[[y]] <- idat
+  }
+  o$transPop <- transPop
+  
+  return(o)
+}
+
 # Multiple plot function
 #
 # ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
@@ -261,8 +310,14 @@ simClass <- R6Class('simClass',
     startSim = function(iter, years, startValues, lociNames, genoCols, 
                         surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
                         Kf, Km, senesc, minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
-                        immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                        immPop, immRate, immMaleProb,
+                        transPop = NULL, transMets = NULL,
+                        femReplaceProb, maleReplaceProb,
+                        aiRate = NULL, aiGenotypes = NULL,
                         genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+      
+      if (!is.null(aiRate) & is.null(aiGenotypes)) 
+        stop('Artificial insemination rate (aiRate) assigned with no genotypes provided.  Please assign genotypes to aiGenotypes.')
       start <- Sys.time()
       self$Date <- start
       self$iterations <- iter
@@ -282,26 +337,54 @@ simClass <- R6Class('simClass',
       for (i in 1:iter) {
         if (verbose == TRUE) cat(paste('Currently on simulation: ', i, "\n", sep=""))
         
+        # Create translocated population
+        if (!is.null(transMets) & !is.null(transPop)) {
+          warning('transMets and transPop are both arguments.  Randomly generating new translocated populations using transMets.')
+          transPop <- createTranslocations(transMets$tPop, transMets$transYears, 
+                                           transMets$numInds, transMets$ages, 
+                                           transMets$femProb)
+        } else if (!is.null(transMets)) {
+          transPop <- createTranslocations(transMets$tPop, transMets$transYears, 
+                                           transMets$numInds, transMets$ages, 
+                                           transMets$femProb)          
+        }
+        
         # new instances of popClass
         popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
         
         # fill with starting values
         popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
                       socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans = ageTrans)
+
+        # Calculate months
+        months <- years * 12
+                
+        # AI timing
+        if (!is.null(aiRate)) {
+          popi$aiInterval <- seq(aiRate$startMonth, (aiRate$years * 12) + months, 
+                                 by=aiRate$years * 12)
+          popi$aiLitters <- aiRate$litts
+        }
         
         # simulate population
-        months <- years * 12
-       # ent = Sys.time()
+        #ent = Sys.time()
         for (m in 1:months) {
           print(paste('Step:', m/12))
           popi$kill(surv)
-          popi$incremTime(senesc)
+          popi$incremTime(senesc, aiRate)
           if (runif(1) <= immRate) {
             immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
             if (nrow(immPop_subset) == 0) immPop_subset <- immPop
           }
+          
+          if (!is.null(transPop)) {
+            if ((m/12) %in% transPop$years) {
+              popi$addTranslocations(tP = transPop, yr = m/12, ageTrans = ageTrans)
+            }
+          } 
         #  start = Sys.time()
-          popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
+          popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge,
+                           femReplaceProb = femReplaceProb, maleReplaceProb = maleReplaceProb)
         #  print(paste('Computation time (Stage Adjust): ', (Sys.time() - start), sep=''))
           
         #  start = Sys.time()
@@ -309,7 +392,7 @@ simClass <- R6Class('simClass',
         #  print(paste('Computation time (Breed Status): ', (Sys.time() - start), sep=''))
           
         #  start = Sys.time()
-          popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+          popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames, aiRate, aiGenotypes)
         #  print(paste('Computation time (Reproduce): ', (Sys.time() - start), sep=''))
           
         #  start = Sys.time()
@@ -360,46 +443,51 @@ simClass <- R6Class('simClass',
     
     startParSim = function(numCores = detectCores(), iter, years, startValues, lociNames, genoCols, 
                            surv, ageTrans, probBreed, litterProbs, probFemaleKitt, 
-                           Kf, Km, senesc, minMaleReproAge,maxN_ReproMale = maxN_ReproMale,
-                           immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                           Kf, Km, senesc, minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
+                           immPop, immRate, immMaleProb,
+                           transPop = NULL, transMets = NULL,
+                           femReplaceProb, maleReplaceProb,
+                           aiRate = NULL, aiGenotypes = NULL,
                            genOutput = TRUE, savePopulations = TRUE, verbose = TRUE) {
+      
+      # Checks
+      if (!is.null(transMets) & !is.null(transPop)) {
+        warning('transMets and transPop are both assigned arguments.  Randomly generating new translocated populations using transMets.')
+      }  
+      
       start <- Sys.time()
       self$Date <- start
       self$iterations <- iter
       self$years <- years
       immPop_subset <- immPop
       
-      cSim <- function(s1, s2) {
-        s1$populations <- rbind(s1$populations, s2$populations)
+      cSim <- function (s1, ...) {
+        
+        s1$populations <- rbind(s1$populations, do.call("rbind", lapply(list(...), function (a) a$populations)))
+        
+        ###
         for (subP in 1:length(s1$pop.size)) {
           for (stage in 1:length(s1$pop.size[[subP]])) {
-            s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], s2$pop.size[[subP]][[stage]])
+            s1$pop.size[[subP]][[stage]] <- rbind.fill(s1$pop.size[[subP]][[stage]], 
+                                                       do.call("rbind.fill", lapply(list(...), function (a) a$pop.size[[subP]][[stage]])))
           }
         }
+        ###
         
-        s1$lambda <- rbind.fill(s1$lambda, s2$lambda)
-        s1$extinct <- c(s1$extinct, s2$extinct)
-        s1$extinctTime <- c(s1$extinctTime, s2$extinctTime)
+        s1$lambda <- rbind.fill(s1$lambda, do.call("rbind.fill", lapply(list(...), function (a) a$lambda)))
+        s1$extinct <- c(s1$extinct, unlist(lapply(list(...), function (a) a$extinct)))
+        s1$extinctTime <- c(s1$extinctTime, unlist(lapply(list(...), function (a) a$extinctTime)))
         
-        for (stat in 1:length(s1$Na)) {
-          s1$Na[[stat]] <- rbind.fill(s1$Na[[stat]], s2$Na[[stat]])
+        stats <- length(s1$Na)
+        for (b in 1:stats) {
+          s1$Na[[b]] <- rbind.fill(s1$Na[[b]], do.call("rbind.fill", lapply(list(...), function (a) a$Na[[b]])))
+          s1$He[[b]] <- rbind.fill(s1$He[[b]], do.call("rbind.fill", lapply(list(...), function (a) a$He[[b]])))
+          s1$Ho[[b]] <- rbind.fill(s1$Ho[[b]], do.call("rbind.fill", lapply(list(...), function (a) a$Ho[[b]])))
+          s1$IR[[b]] <- rbind.fill(s1$IR[[b]], do.call("rbind.fill", lapply(list(...), function (a) a$IR[[b]])))
+          s1$Fis[[b]] <- rbind.fill(s1$Fis[[b]], do.call("rbind.fill", lapply(list(...), function (a) a$Fis[[b]])))
         }
-        
-        for (stat in 1:length(s1$He)) {
-          s1$He[[stat]] <- rbind.fill(s1$He[[stat]], s2$He[[stat]])
-        }
-        for (stat in 1:length(s1$Ho)) {
-          s1$Ho[[stat]] <- rbind.fill(s1$Ho[[stat]], s2$Ho[[stat]])
-        }
-        #for (stat in 1:length(s1$IR)) {
-        #  s1$IR[[stat]] <- rbind.fill(s1$IR[[stat]], s2$IR[[stat]])
-        #}
-        for (stat in 1:length(s1$Fis)) {
-          s1$Fis[[stat]] <- rbind.fill(s1$Fis[[stat]], s2$Fis[[stat]])
-        }
-        s1$PropPoly <- rbind.fill(s1$PropPoly, s2$PropPoly)
-        s1$Ne <- rbind.fill(s1$Ne, s2$Ne)
-        
+        s1$PropPoly <- rbind.fill(s1$PropPoly, do.call("rbind.fill", lapply(list(...), function (a) a$PropPoly)))
+        s1$Ne <- rbind.fill(s1$Ne, do.call("rbind.fill", lapply(list(...), function (a) a$Ne)))
         return(s1)
       }
       
@@ -412,8 +500,16 @@ simClass <- R6Class('simClass',
       #operation
       o <- foreach(i = 1:iter, .combine = cSim, 
                    .packages = packList, 
-                   .inorder = F, .verbose = FALSE, .export = 'filename') %dopar% {
+                   .multicombine = T, .maxcombine = 1000,
+                   .inorder = F, .verbose = TRUE, .export = 'filename') %dopar% {
                      source(filename)
+                     
+                     # Create translocated population
+                     if (!is.null(transMets)) {
+                       transPop <- createTranslocations(transMets$tPop, transMets$transYears, 
+                                                        transMets$numInds, transMets$ages, 
+                                                        transMets$femProb)          
+                     }
                      
                      # new instances of popClass
                      popi <- popClass$new(popID = paste('Population_', i, sep=""), time=0)
@@ -421,19 +517,34 @@ simClass <- R6Class('simClass',
                      # fill with starting values
                      popi$startPop(startValues=startValues, ID='animID', sex='sex', age='age', mother='mother', father='father',
                                    socialStat='socialStat', reproStat='reproStat', genoCols=genoCols, genOutput=genOutput, ageTrans=ageTrans)
+            
+                     # Calc months
+                     months <- years * 12
+                                          
+                     # AI timing
+                     if (!is.null(aiRate)) {
+                       popi$aiInterval <- seq(aiRate$startMonth, (aiRate$years * 12) + months, 
+                                              by=aiRate$years * 12)
+                       popi$aiLitters <- aiRate$litts
+                     }
                      
                      # simulate population
-                     months <- years * 12
                      for (m in 1:months) {
                        popi$kill(surv)
-                       popi$incremTime(senesc)
+                       popi$incremTime(senesc, aiRate)
                        if (runif(1) <= immRate) {
                          immPop_subset <- popi$addImmigrants(iP=immPop_subset, immMaleProb, ageTrans)
                          if (nrow(immPop_subset) == 0) immPop_subset <- immPop
                        }
-                       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge)
+                       if (!is.null(transPop)) {
+                         if ((m/12) %in% transPop$years) {
+                           popi$addTranslocations(tP = transPop, yr = m/12, ageTrans = ageTrans)
+                         }
+                       }  
+                       popi$stageAdjust(ageTrans, Km=Km, Kf=Kf, minMaleReproAge=minMaleReproAge,
+                                        femReplaceProb = femReplaceProb, maleReplaceProb = maleReplaceProb)
                        popi$updateBreedStat(ageTrans, maxN_ReproMale)
-                       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames)
+                       popi$reproduce(litterProbs,probBreed,probFemaleKitt,lociNames,aiRate,aiGenotypes)
                        #popi$kill(surv)
                        popi$updateStats(genOutput)
                        if (popi$extinct == TRUE) break
@@ -544,8 +655,8 @@ simClass <- R6Class('simClass',
         eTime <- data.frame(mean = Extinct.time_mean,
                             median = Extinct.time_median,
                             lHPDI95 = Extinct.time_quant[1],
-                            uHPDI95 = Extinct.time_quant[2])}
-      else {
+                            uHPDI95 = Extinct.time_quant[2])
+        } else {
         eTime <- data.frame(mean = Extinct.time_mean,
                             median = Extinct.time_median,
                             lHPDI95 = 'Inestimable',
@@ -564,48 +675,58 @@ simClass <- R6Class('simClass',
             return(cbind(mean, se, lHPDI95 = HPDI95[1], uHPDI95 = HPDI95[2]))
           })
         })
-      }
-      else {outSize <- 'Final Population size = 0 since ExtinctionProb = 1'}
+      } else {
+          outSize <- 'Final Population size = 0 since ExtinctionProb = 1'
+          }
       
       # Immigrant population stats
-      pps <- self$populations
-      o <- ddply(pps, .(PopID), summarize, Immigrants = sum(immigrant), 
-                 ImmRate = sum(immigrant) / years,
-                 ReproductiveImm = sum(!is.na(reproHist) & immigrant),
-                 ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
-      
-      if(!is.null(o)) {
-        mNumImm <- mean(o$Immigrants)
-        ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
-        mImmRate <- mean(o$ImmRate)
-        ciImmRate <- HPDinterval(as.mcmc(o$ImmRate), prob=0.95, na.rm=T) 
-        mNumReproImm <- mean(o$ReproductiveImm)
-        ciNumReproImm <- HPDinterval(as.mcmc(o$ReproductiveImm), prob=0.95, na.rm=T) 
-        mImmReproRate <- mean(o$ReproImmRate)
-        ciImmReproRate <- HPDinterval(as.mcmc(o$ReproImmRate), prob=0.95, na.rm=T) 
-        r1 <- cbind(mean = mNumImm, lHPDI95 = ciNumImm[1], uHPDI95 = ciNumImm[2])
-        r2 <- cbind(mean = mImmRate, lHPDI95 = ciImmRate[1], uHPDI95 = ciImmRate[2])
-        r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
-        r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
-        imm <- rbind(r1, r2, r3, r4) 
-        row.names(imm) <- c("Total Immigrants", 
-                            paste("Immigrant Rate (per ", years, " years)", sep=""),
-                            "Total Reproductive Immigrants",
-                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
-      }
-      else {
+      imm <- self$immigrants()$summary
+      if (is.null(imm)) {
         r1 <- 'N/A'
         r2 <- 0
         r3 <- 'N/A'
         r4 <- 'N/A'
         
         imm <- rbind(r1, r2, r3, r4) 
-        row.names(imm) <- c("Total Immigrants", 
-                            paste("Immigrant Rate (per ", years, " years)", sep=""),
-                            "Total Reproductive Immigrants",
-                            paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+        row.names(imm) <- c("Mean Number of Immigrants", 
+                            paste("Mean Immigration Rate (per ", N.years, " years)", sep=""),
+                            "Mean Number of Reproductive Immigrants",
+                            paste("Reproductive Immigrant Rate (per ", N.years, " years)", sep=""))
       }
       
+      # Immigrant population stats
+      trans <- self$translocated()$summary
+      if (is.null(trans)) {
+        r1 <- 'N/A'
+        r2 <- 0
+        r3 <- 'N/A'
+        r4 <- 'N/A'
+        
+        trans <- rbind(r1, r2, r3, r4) 
+        row.names(trans) <- c("Mean Number Translocated", 
+                              paste("Mean Translocation Rate (per ", N.years, " years)", sep=""),
+                              "Mean Number of Reproductive Translocated",
+                              paste("Reproductive Translocated Rate (per ", N.years, " years)", sep=""))
+      }
+      
+      # aiOffspring population stats
+      AI_offspring <- self$aiOffspring()$summary
+      if (is.null(AI_offspring)) {
+        r0 <- 0
+        r1 <- 'N/A'
+        r2 <- 0
+        r3 <- 'N/A'
+        r4 <- 'N/A'
+        
+        AI_offspring <- rbind(r0, r1, r2, r3, r4) 
+        row.names(AI_offspring) <- c("Mean Number of AI Litters",
+                                     "Mean Number AI Offspring", 
+                                     paste("Mean AI Offspring Rate (per ", N.years, " years)", sep=""),
+                                     "Mean Number of Reproductive AI Offspring",
+                                     paste("Reproductive AI Offspring Rate (per ", N.years, " years)", sep=""))
+      }
+      
+      # Geno Summaries
       #if (!is.null(self$Na$mean) & (N.years + 1) == ncol(self$Na$mean)) {
       if (!is.null(self$Na$mean)) {
         if ((N.years + 1) == ncol(self$Na$mean)) {
@@ -617,7 +738,7 @@ simClass <- R6Class('simClass',
           PropPolyi <- self$PropPoly[, N.years + 1]
           Hei <- self$He$mean[, N.years + 1]
           Hoi <- self$Ho$mean[, N.years + 1]
-          #IRi <- self$IR$mean[, N.years + 1]
+          IRi <- self$IR$mean[, N.years + 1]
           Fisi <- self$Fis$mean[, N.years + 1]
         
           if (length(na.omit(Nai)) > 1) {
@@ -651,69 +772,67 @@ simClass <- R6Class('simClass',
                                   se = sd(Hoi, na.rm = T) / sqrt(N.iter),
                                   lHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[1],
                                   uHPDI95 = HPDinterval(as.mcmc(Hoi), prob = 0.95, na.rm = T)[2]))
-            #outGen <- rbind(outGen, 
-            #                cbind(stat = "IR", 
-            #                      mean = mean(IRi, na.rm = T), 
-            #                      se = sd(IRi, na.rm = T) / sqrt(N.iter),
-            #                      lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
-            #                      uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "IR", 
+                                  mean = mean(IRi, na.rm = T), 
+                                  se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[1],
+                                  uHPDI95 = HPDinterval(as.mcmc(IRi), prob = 0.95, na.rm = T)[2]))
             outGen <- rbind(outGen, 
                             cbind(stat = "Fis", 
                                   mean = mean(Fisi, na.rm = T), 
                                   se = sd(Fisi, na.rm = T) / sqrt(N.iter),
                                   lHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[1],
                                   uHPDI95 = HPDinterval(as.mcmc(Fisi), prob = 0.95, na.rm = T)[2]))
-          
+            
             row.names(outGen) <- rep(NULL, nrow(outGen))
+          } else {
+            HPDI95 = 'Inestimable'
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Na", 
+                                  mean = mean(Nai, na.rm = T), 
+                                  se = sd(Nai, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Ne", 
+                                  mean = mean(Nei, na.rm = T), 
+                                  se = sd(Nei, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "PropPoly", 
+                                  mean = mean(PropPolyi, na.rm = T), 
+                                  se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "He", 
+                                  mean = mean(Hei, na.rm = T), 
+                                  se = sd(Hei, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Ho", 
+                                  mean = mean(Hoi, na.rm = T), 
+                                  se = sd(Hoi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "IR", 
+                                  mean = mean(IRi, na.rm = T), 
+                                  se = sd(IRi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            outGen <- rbind(outGen, 
+                            cbind(stat = "Fis", 
+                                  mean = mean(Fisi, na.rm = T), 
+                                  se = sd(Fisi, na.rm = T) / sqrt(N.iter),
+                                  lHPDI95 = HPDI95,
+                                  uHPDI95 = HPDI95))
+            
+            row.names(outGen) <- rep(NULL, nrow(outGen))      
           }
-        
-        else {
-          HPDI95 = 'Inestimable'
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Na", 
-                                mean = mean(Nai, na.rm = T), 
-                                se = sd(Nai, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Ne", 
-                                mean = mean(Nei, na.rm = T), 
-                                se = sd(Nei, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "PropPoly", 
-                                mean = mean(PropPolyi, na.rm = T), 
-                                se = sd(PropPolyi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "He", 
-                                mean = mean(Hei, na.rm = T), 
-                                se = sd(Hei, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Ho", 
-                                mean = mean(Hoi, na.rm = T), 
-                                se = sd(Hoi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          #outGen <- rbind(outGen, 
-          #                cbind(stat = "IR", 
-          #                      mean = mean(IRi, na.rm = T), 
-          #                      se = sd(IRi, na.rm = T) / sqrt(N.iter),
-          #                      lHPDI95 = HPDI95,
-          #                      uHPDI95 = HPDI95))
-          outGen <- rbind(outGen, 
-                          cbind(stat = "Fis", 
-                                mean = mean(Fisi, na.rm = T), 
-                                se = sd(Fisi, na.rm = T) / sqrt(N.iter),
-                                lHPDI95 = HPDI95,
-                                uHPDI95 = HPDI95))
-          
-          row.names(outGen) <- rep(NULL, nrow(outGen))      
-        }
         
         out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
                     Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
@@ -727,11 +846,27 @@ simClass <- R6Class('simClass',
                     ExtinctionTime = eTime,
                     Pop.size = outSize,
                     Immigrants = imm,
+                    Translocated = trans,
+                    AI_Offspring = AI_offspring,
                     GeneticComposition = outGen)
+        } else {
+          out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
+                      Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
+                                          median = c(EmpLambda_median, exp(StochLogLambda_median)),
+                                          lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
+                                          uHPDI95 = c(EmpLambda_quant[2], exp(StochLogLambda_quant[2])),
+                                          l95_se = c(EmpLambda_mean - 1.96*EmpLambda_se, exp(StochLogLambda_mean - 1.96*StochLogLambda_se)), 
+                                          u95_se = c(EmpLambda_mean + 1.96*EmpLambda_se, exp(StochLogLambda_mean + 1.96*StochLogLambda_se)),
+                                          row.names = c("Empirical Lambda", "Stochastic Lambda")),
+                      ExtinctionProb = Prob.extinct,
+                      Pop.size = outSize,
+                      Immigrants = imm,
+                      Translocated = trans,
+                      AI_Offspring = AI_offspring,
+                      GeneticComposition = "No genetic output generated: check if ExtinctionProb = 1")    
         }
-      }
-      else {
-        out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
+      } else {
+       out <- list(DateTime = self$Date, CompTime = self$SimTime, N.iter = N.iter, N.years = N.years,
                     Lambda = data.frame(mean = c(EmpLambda_mean, exp(StochLogLambda_mean)), 
                                         median = c(EmpLambda_median, exp(StochLogLambda_median)),
                                         lHPDI95 = c(EmpLambda_quant[1], exp(StochLogLambda_quant[1])), 
@@ -742,10 +877,12 @@ simClass <- R6Class('simClass',
                     ExtinctionProb = Prob.extinct,
                     Pop.size = outSize,
                     Immigrants = imm,
-                    GeneticComposition = "No genetic output generated: Check if genOutput = TRUE or if ExtinctionProb = 1")    
+                    Translocated = trans,
+                    AI_Offspring = AI_offspring,
+                    GeneticComposition = "No genetic output generated: check if genOutput = TRUE")    
       }
       
-      out
+      return(out)
     },
     
     pullGenoSummary = function(years, genoMetric) {
@@ -784,9 +921,11 @@ simClass <- R6Class('simClass',
       ps <- self$populations
       
       o <- ddply(ps, .(PopID), summarize, Immigrants = sum(immigrant), 
-                 ImmRate = sum(immigrant) / years,
+                 ImmRate = sum(immigrant),
                  ReproductiveImm = sum(!is.na(reproHist) & immigrant),
-                 ReproImmRate = sum(!is.na(reproHist) & immigrant) / years)
+                 ReproImmRate = sum(!is.na(reproHist) & immigrant))
+      o$ImmRate <- o$ImmRate / y
+      o$ReproImmRate <- o$ReproImmRate / y
       
       mNumImm <- mean(o$Immigrants)
       ciNumImm <- HPDinterval(as.mcmc(o$Immigrants), prob=0.95, na.rm=T) 
@@ -801,10 +940,83 @@ simClass <- R6Class('simClass',
       r3 <- cbind(mean = mNumReproImm, lHPDI95 = ciNumReproImm[1], uHPDI95 = ciNumReproImm[2])
       r4 <- cbind(mean = mImmReproRate, lHPDI95 = ciImmReproRate[1], uHPDI95 = ciImmReproRate[2])
       o.summary <- rbind(r1, r2, r3, r4) 
-      row.names(o.summary) <- c("Total Immigrants", 
-                                paste("Immigrant Rate (per ", years, " years)", sep=""),
-                                "Total Reproductive Immigrants",
-                                paste("Reproductive Immigrant Rate (per ", years, " years)", sep=""))
+      row.names(o.summary) <- c("Mean Number of Immigrants", 
+                                paste("Mean Immigration Rate (per ", y, " years)", sep=""),
+                                "Mean Number of Reproductive Immigrants",
+                                paste("Reproductive Immigrant Rate (per ", y, " years)", sep=""))
+      
+      o.list <- list(summary = o.summary, byPop = o)
+      return(o.list)
+    },
+    
+    translocated = function () {
+      y <- self$years
+      ps <- self$populations
+      
+      o <- ddply(ps, .(PopID), summarize, Translocated = sum(translocated == 'Trans' | translocated == 'Settled'), 
+                 TransRate = sum(translocated == 'Trans' | translocated == 'Settled'),
+                 ReproductiveTrans = sum(!is.na(reproHist) & (translocated == 'Trans' | translocated == 'Settled')),
+                 ReproTransRate = sum(!is.na(reproHist) & (translocated == 'Trans' | translocated == 'Settled')))
+      o$TransRate <- o$TransRate / y
+      o$ReproTransRate <- o$ReproTransRate / y
+      
+      mNumTrans <- mean(o$Translocated)
+      ciNumTrans <- HPDinterval(as.mcmc(o$Translocated), prob=0.95, na.rm=T) 
+      mTransRate <- mean(o$TransRate)
+      ciTransRate <- HPDinterval(as.mcmc(o$TransRate), prob=0.95, na.rm=T) 
+      mNumReproTrans <- mean(o$ReproductiveTrans)
+      ciNumReproTrans <- HPDinterval(as.mcmc(o$ReproductiveTrans), prob=0.95, na.rm=T) 
+      mTransReproRate <- mean(o$ReproTransRate)
+      ciTransReproRate <- HPDinterval(as.mcmc(o$ReproTransRate), prob=0.95, na.rm=T) 
+      r1 <- cbind(mean = mNumTrans, lHPDI95 = ciNumTrans[1], uHPDI95 = ciNumTrans[2])
+      r2 <- cbind(mean = mTransRate, lHPDI95 = ciTransRate[1], uHPDI95 = ciTransRate[2])
+      r3 <- cbind(mean = mNumReproTrans, lHPDI95 = ciNumReproTrans[1], uHPDI95 = ciNumReproTrans[2])
+      r4 <- cbind(mean = mTransReproRate, lHPDI95 = ciTransReproRate[1], uHPDI95 = ciTransReproRate[2])
+      o.summary <- rbind(r1, r2, r3, r4) 
+      row.names(o.summary) <- c("Mean Number Translocated", 
+                                paste("Mean Translocation Rate (per ", y, " years)", sep=""),
+                                "Mean Number of Reproductive Translocated",
+                                paste("Reproductive Translocated Rate (per ", y, " years)", sep=""))
+      
+      o.list <- list(summary = o.summary, byPop = o)
+      return(o.list)
+    },
+    
+    aiOffspring = function () {
+      y <- self$years
+      ps <- self$populations
+      
+      o <- ddply(ps, .(PopID), summarize, 
+                 aiLitts = sum(str_count(reproHist, 'ai'), na.rm=T),
+                 aiOff = sum(aiOffspring), 
+                 aioRate = sum(aiOffspring),
+                 ReproductiveAIO = sum(!is.na(reproHist) & aiOffspring),
+                 ReproAIORate = sum(!is.na(reproHist) & aiOffspring))
+      
+      o$aioRate <- o$aioRate / y
+      o$ReproAIORate <- o$ReproAIORate / y
+      
+      mNumLitts <- mean(o$aiLitts)
+      ciNumLitts <- HPDinterval(as.mcmc(o$aiLitts), prob=0.95, na.rm=T) 
+      mNumAIO <- mean(o$aiOff)
+      ciNumAIO <- HPDinterval(as.mcmc(o$aiOff), prob=0.95, na.rm=T) 
+      mAIORate <- mean(o$aioRate)
+      ciAIORate <- HPDinterval(as.mcmc(o$aioRate), prob=0.95, na.rm=T) 
+      mNumReproAIO <- mean(o$ReproductiveAIO)
+      ciNumReproAIO <- HPDinterval(as.mcmc(o$ReproductiveAIO), prob=0.95, na.rm=T) 
+      mAIOReproRate <- mean(o$ReproAIORate)
+      ciAIOReproRate <- HPDinterval(as.mcmc(o$ReproAIORate), prob=0.95, na.rm=T)
+      r0 <- cbind(mean = mNumLitts, lHPDI95 = ciNumLitts[1], uHPDI95 = ciNumLitts[2])
+      r1 <- cbind(mean = mNumAIO, lHPDI95 = ciNumAIO[1], uHPDI95 = ciNumAIO[2])
+      r2 <- cbind(mean = mAIORate, lHPDI95 = ciAIORate[1], uHPDI95 = ciAIORate[2])
+      r3 <- cbind(mean = mNumReproAIO, lHPDI95 = ciNumReproAIO[1], uHPDI95 = ciNumReproAIO[2])
+      r4 <- cbind(mean = mAIOReproRate, lHPDI95 = ciAIOReproRate[1], uHPDI95 = ciAIOReproRate[2])
+      o.summary <- rbind(r0, r1, r2, r3, r4) 
+      row.names(o.summary) <- c("Mean Number of AI Litters",
+                                "Mean Number AI Offspring", 
+                                paste("Mean AI Offspring Rate (per ", y, " years)", sep=""),
+                                "Mean Number of Reproductive AI Offspring",
+                                paste("Reproductive AI Offspring Rate (per ", y, " years)", sep=""))
       
       o.list <- list(summary = o.summary, byPop = o)
       return(o.list)
@@ -948,6 +1160,8 @@ popClass <- R6Class('popClass',
     Ho = NA,
     IR = NA,
     Fis = NA,
+    aiInterval = NA,
+    aiLitters = NA,
     
     initialize = function(popID, ...) {
       self$popID <- popID
@@ -974,7 +1188,8 @@ popClass <- R6Class('popClass',
       for (r in 1:nrow(sv)) {
         ind <- indClass$new(animID=sv[r,ID], sex=sv[r,sex], age=sv[r,age], mother=sv[r,mother], father=sv[r,father], socialStat=sv[r,socialStat], 
                             reproStat=sv[r,reproStat], reproHist=as.character(NA), liveStat=TRUE, birthMon=as.numeric(NA), mortMon=as.numeric(NA), 
-                            genotype=sv[r,genoCols], censored = F, immigrant = F, ageToAdult=as.numeric(NA))
+                            genotype=sv[r,genoCols], censored = F, immigrant = F, translocated = 'No', aiOffspring = FALSE,
+                            ageToAdult=as.numeric(NA))
         self$addToPop(ind)
       }
       self$pullAlive()
@@ -1150,7 +1365,7 @@ popClass <- R6Class('popClass',
           self$Ho[, year] <- c(mean(Hobs), sd(Hobs) / sqrt(length(Hobs)))
         
           # Individual heterozygosity IR
-          #self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
+          self$IR[, year] <- c(mean(ir(g[,-1])), sd(ir(g[,-1])) / sqrt(nrow(g)))
         
           # Inbreeding coefficient Fis
           Fis_ind <- sapply(inbreeding(g_genind, N=50), mean)
@@ -1187,7 +1402,8 @@ popClass <- R6Class('popClass',
       # Create new immigrant and add to population
       imm <- indClass$new(animID=newID, sex=sex, age=age, mother=as.character(NA), father=as.character(NA), 
                           socialStat="SubAdult", reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                          birthMon=self$time - age, mortMon=as.numeric(NA), genotype=newgeno, immigrant=TRUE, ageToAdult=ata)
+                          birthMon=self$time - age, mortMon=as.numeric(NA), genotype=newgeno, 
+                          immigrant=TRUE, translocated='No', aiOffspring=FALSE, ageToAdult=ata)
       self$addToPop(imm)
       
       # Update living populations
@@ -1197,7 +1413,50 @@ popClass <- R6Class('popClass',
       return(iP[-ro, ])
     },
     
-    stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge) {
+    addTranslocations = function(tP, yr, ageTrans) {
+      indx <- which(tP$years == yr)
+      trans <- tP$transPop[[indx]]
+
+      # Instantiate individuals
+      for (r in 1:nrow(trans)) {
+        aT <- subset(ageTrans, sex == as.character(trans$sex[r]))
+        
+        if (trans$age[r] > aT[aT$socialStat == 'SubAdult', 'high']) {
+          sS <- 'Adult'
+          ata <- aT[aT$socialStat == 'SubAdult', 'high']
+        } else if (trans$age[r] > aT[aT$socialStat == 'Kitten', 'age']) {
+          sS <- 'Kitten'
+          rang <- aT[aT$socialStat == "SubAdult", 'low']:aT[aT$socialStat == "SubAdult", 'high']
+          if (length(rang) == 1) 
+            ata <- rang else 
+              ata <- sample(rang, size = 1)
+        } else {
+          rang <- aT[aT$socialStat == "SubAdult", 'low']:aT[aT$socialStat == "SubAdult", 'high']
+          if (length(rang) == 1) 
+            ata <- rang else 
+              ata <- sample(rang, size = 1)
+          
+          if (trans$age[r] > ata)
+            sS <- 'Adult' else
+              sS <- 'SubAdult'
+        }
+        
+        imm <- indClass$new(animID = trans$animID[r], sex = trans$sex[r], age = trans$age[r],
+                            mother=as.character(NA), father=as.character(NA), 
+                            socialStat=sS, reproStat=FALSE, reproHist=as.character(NA), 
+                            liveStat=TRUE, censored=FALSE,
+                            birthMon=self$time - trans$age[r], mortMon=as.numeric(NA), 
+                            genotype=trans[r, 4:ncol(trans)], 
+                            immigrant=FALSE, ageToAdult=ata)
+        imm$translocated <- 'Trans'
+        self$addToPop(imm)
+      }
+      
+      # add to population
+      self$pullAlive()
+    },
+    
+    stageAdjust = function(ageTrans, Km, Kf, minMaleReproAge, femReplaceProb, maleReplaceProb) {
       iAlive <- self$indsAlive
       
       kitsAlive <- llply(iAlive, function(x) if (x$socialStat=='Kitten') x)
@@ -1215,6 +1474,111 @@ popClass <- R6Class('popClass',
       adultMalesAlive <- llply(iAlive, function(x) if (x$socialStat=='Adult' & x$sex == 'M') x)
       adultFemalesAlive <- adultFemalesAlive[!sapply(adultFemalesAlive, is.null)]
       adultMalesAlive <- adultMalesAlive[!sapply(adultMalesAlive, is.null)]
+      
+      # Carrying capacity
+        ## Females
+      adF <- length(adultFemalesAlive)
+      
+        # Determine the K for the month
+      if (adF < Kf[1, 1]) {
+        rown <- which(runif(1) <= cumsum(Kf[1, -1]))
+        kf <- Kf[rown[1], 1]
+      } else {
+        rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
+        kf <- Kf[rown[1], 1]
+      }
+      
+        # Identify the allowed space
+      allowF <- kf - adF
+      
+        # If reduction in K, remove adults
+      if (allowF < 0) {
+        # If translocated and unsettled, 50% chance of retaining spot
+        # Adult females greater than K should only occur from immigration or translocation
+        transloc <- unlist(llply(adultFemalesAlive, function(x) x$translocated == 'Trans'))
+        femReplaceProbs <- runif(length(adultFemalesAlive))
+        safe <- ifelse(transloc & femReplaceProbs > femReplaceProb, TRUE, FALSE)
+        ####
+        
+        if (kf == sum(safe)) {
+          adultFemalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultFemalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultFemalesAlive <- adultFemalesAlive[-which(!safe)]
+        } else if (kf > sum(safe)) {
+          numToSave <- kf - sum(safe)
+          toSave <- sample(which(!safe), size = min(numToSave, length(which(!safe))))
+          safe[toSave] <- TRUE
+          adultFemalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultFemalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultFemalesAlive <- adultFemalesAlive[-which(!safe)]
+        } else {
+          numToRemove <- sum(safe) - kf
+          toRemove <- sample(which(safe), size = numToRemove)
+          safe[toRemove] <- FALSE
+          adultFemalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultFemalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultFemalesAlive <- adultFemalesAlive[-which(!safe)]
+        }
+      }
+      
+      # Convert translocated individuals to settled
+      transloc <- unlist(llply(adultFemalesAlive, function(x) x$translocated == 'Trans'))
+      if (any(transloc)) {
+        adultFemalesAlive[[which(transloc)]]$translocated <- 'Settled'
+        adultFemalesAlive[[which(transloc)]]$reproStat <- TRUE
+      }
+
+        ## Males
+      adM <- length(adultMalesAlive)
+      
+        # Determine the K for the month
+      if (adM < Km[1, 1]) {
+        rown <- which(runif(1) <= cumsum(Km[1, -1]))
+        km <- Km[rown[1], 1]
+      } else {
+        rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
+        km <- Km[rown[1], 1]
+      }
+      
+        # Identify the allowed space
+      allowM <- km - adM
+      
+        # If reduction in K, remove adults
+      if (allowM < 0) {
+        # If translocated and unsettled, 50% chance of retaining spot
+        # Adult males greater than K should only occur from immigration or translocation
+        transloc <- unlist(llply(adultMalesAlive, function(x) x$translocated == 'Trans'))
+        maleReplaceProbs <- runif(length(adultMalesAlive))
+        safe <- ifelse(transloc & maleReplaceProbs > maleReplaceProb, TRUE, FALSE)
+        ####
+        
+        if (km == sum(safe)) {
+          adultMalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultMalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultMalesAlive <- adultMalesAlive[-which(!safe)]
+        } else if (km > sum(safe)) {
+          numToSave <- km - sum(safe)
+          toSave <- sample(which(!safe), size = min(numToSave, length(which(!safe))))
+          safe[toSave] <- TRUE
+          adultMalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultMalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultMalesAlive <- adultMalesAlive[-which(!safe)]
+        } else {
+          numToRemove <- sum(safe) - km
+          toRemove <- sample(which(safe), size = numToRemove)
+          safe[toRemove] <- FALSE
+          adultMalesAlive[[which(!safe)]]$liveStat <- FALSE
+          adultMalesAlive[[which(!safe)]]$mortMon <- self$time
+          adultMalesAlive <- adultMalesAlive[-which(!safe)]
+        }
+      }
+      
+       # Convert translocated individuals to settled
+      transloc <- unlist(llply(adultMalesAlive, function(x) x$translocated == 'Trans'))
+      if (any(transloc)) {
+        adultMalesAlive[[which(transloc)]]$translocated <- 'Settled'
+        adultMalesAlive[[which(transloc)]]$reproStat <- TRUE
+      }
       
       if (length(kitsAlive) > 0) {
         for (k in 1:length(kitsAlive)) {
@@ -1239,33 +1603,32 @@ popClass <- R6Class('popClass',
       }
       
       if (length(tsubAdultFAlive) > 0) {
-        adF <- length(adultFemalesAlive)
+        #adF <- length(adultFemalesAlive)
         
         # Determine the K for the month
-        if (adF < Kf[1, 1]) {
-          rown <- which(runif(1) <= cumsum(Kf[1, -1]))
-          kf <- Kf[rown[1], 1]
-        }    
-        else {
-          rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
-          kf <- Kf[rown[1], 1]
-        }
+        #if (adF < Kf[1, 1]) {
+        #  rown <- which(runif(1) <= cumsum(Kf[1, -1]))
+        #  kf <- Kf[rown[1], 1]
+        #} else {
+        #  rown <- which(runif(1) <= cumsum(Kf[max(which(Kf[, 1] <= adF)), -1]))
+        #  kf <- Kf[rown[1], 1]
+        #}
         
         # Identify the allowed space
-        allowF <- kf - adF
+        #allowF <- kf - adF
         
         # If reduction in K, remove adults
-        if (allowF < 0) {
-          numRemove <- abs(allowF) 
-          for (nR in 1:numRemove) {
-            ages <- unlist(llply(adultFemalesAlive, function(x) x$age))
-            toRemove <- which(ages == min(ages))
-            if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
-            adultFemalesAlive[[toRemove]]$liveStat <- FALSE
-            adultFemalesAlive[[toRemove]]$mortMon <- self$time
-            adultFemalesAlive <- adultFemalesAlive[[-toRemove]]
-          }
-        }
+        #if (allowF < 0) {
+        #  numRemove <- abs(allowF) 
+        #  for (nR in 1:numRemove) {
+        #    ages <- unlist(llply(adultFemalesAlive, function(x) x$age))
+        #    toRemove <- which(ages == min(ages))
+        #    if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+        #    adultFemalesAlive[[toRemove]]$liveStat <- FALSE
+        #    adultFemalesAlive[[toRemove]]$mortMon <- self$time
+        #    adultFemalesAlive <- adultFemalesAlive[-toRemove]
+        #  }
+        #}
         
         # If no space available, kill off subAdult females of the appropriate age
         if (allowF <= 0) {
@@ -1274,10 +1637,7 @@ popClass <- R6Class('popClass',
             x$mortMon <- self$time
             x$censored <- TRUE
           }))
-        }
-        
-        # Else if space is available, sample subAdult females of the appropriate age
-        else {
+        } else { # Else if space is available, sample subAdult females of the appropriate age
           sampF.size <- min(length(tsubAdultFAlive), allowF)
           samp <- sample(1:length(tsubAdultFAlive), size = sampF.size)
           invisible(llply(tsubAdultFAlive[samp], function(x) {
@@ -1293,33 +1653,32 @@ popClass <- R6Class('popClass',
       }
       
       if (length(tsubAdultMAlive) > 0) {
-        adM <- length(adultMalesAlive)
+        #adM <- length(adultMalesAlive)
         
         # Determine the K for the month
-        if (adM < Km[1, 1]) {
-          rown <- which(runif(1) <= cumsum(Km[1, -1]))
-          km <- Km[rown[1], 1]
-        }
-        else {
-          rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
-          km <- Km[rown[1], 1]
-        }
+        #if (adM < Km[1, 1]) {
+        #  rown <- which(runif(1) <= cumsum(Km[1, -1]))
+        #  km <- Km[rown[1], 1]
+        #} else {
+        #  rown <- which(runif(1) <= cumsum(Km[max(which(Km[, 1] <= adM)), -1]))
+        #  km <- Km[rown[1], 1]
+        #}
         
         # Identify the allowed space
-        allowM <- km - adM
+        #allowM <- km - adM
         
         # If reduction in K, remove adults
-        if (allowM < 0) {
-          numRemove <- abs(allowM) 
-          for (nR in 1:numRemove) {
-            ages <- unlist(llply(adultMalesAlive, function(x) x$age))
-            toRemove <- which(ages == min(ages))
-            if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
-            adultMalesAlive[[toRemove]]$liveStat <- FALSE
-            adultMalesAlive[[toRemove]]$mortMon <- self$time
-            adultMalesAlive <- adultMalesAlive[[-toRemove]]
-          }
-        }
+        #if (allowM < 0) {
+        #  numRemove <- abs(allowM) 
+        #  for (nR in 1:numRemove) {
+        #    ages <- unlist(llply(adultMalesAlive, function(x) x$age))
+        #    toRemove <- which(ages == min(ages))
+        #    if (length(toRemove) > 1) toRemove <- sample(toRemove, size=1)
+        #    adultMalesAlive[[toRemove]]$liveStat <- FALSE
+        #    adultMalesAlive[[toRemove]]$mortMon <- self$time
+        #    adultMalesAlive <- adultMalesAlive[-toRemove]
+        #  }
+        #}
         
         # If no space available, kill off subAdult males of the appropriate age
         if (allowM <= 0) {
@@ -1328,10 +1687,7 @@ popClass <- R6Class('popClass',
             x$mortMon <- self$time
             x$censored <- TRUE
           }))
-        }
-        
-        # Else if there is space, sample subAdult males of the appropriate age
-        else {
+        } else {        # Else if there is space, sample subAdult males of the appropriate age
           sampM.size <- min(length(tsubAdultMAlive), allowM)
           samp <- sample(1:length(tsubAdultMAlive), size = sampM.size)
           invisible(llply(tsubAdultMAlive[samp], function(x) {
@@ -1418,16 +1774,12 @@ popClass <- R6Class('popClass',
             
             # remove litters
             aL[[l]] <- NULL
-          }
-          
-          else {
+          } else {
             # change female reproductive status after gestation
             if (aL[[l]]$gestation >= 3) {
               aL[[l]]$mother$reproStat <- TRUE  
               aL[[l]] <- NULL
-            }
-            
-            else {
+            } else {
               if (length(aL[[l]]$kittens) > 0) {
                 for (k in length(aL[[l]]$kittens):1) {
                   # Pulling dead kittens or dispersed kittens (SubAdults)
@@ -1436,9 +1788,7 @@ popClass <- R6Class('popClass',
                 
                 #increment gestation
                 if (length(aL[[l]]$kittens) == 0 & aL[[l]]$gestation < 3) aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
-              }
-              
-              else {
+              } else {
                 #increment gestation
                 aL[[l]]$gestation <- sum(aL[[l]]$gestation, 1, na.rm=T)
               }
@@ -1449,18 +1799,18 @@ popClass <- R6Class('popClass',
       }
     },
     
-    reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames) {
+    reproduce = function(litterProbs,probBreed,probFemaleKitt,lociNames,aiRate,aiGenotypes) {
       ######################
       ### Managing pairs ###
       ######################
       aPairs <- self$activePairs
       
-        # Males
+        # Males and females alive
       m_alive <- llply(self$indsAlive, function(x) if (x$sex=="M" & x$socialStat=="Adult" & x$reproStat==TRUE) x)
       m_alive <- m_alive[!sapply(m_alive, is.null)]
       f_alive <- llply(self$indsAlive, function(x) if (x$sex=="F" & x$socialStat=="Adult") x)
       f_alive <- f_alive[!sapply(f_alive, is.null)] 
-
+      
       if (length(f_alive) > 0 & length(m_alive) > 0) {
         m_aliveIDs <- llply(m_alive, function(x) x$animID)
         m_InPairs <- llply(aPairs, function(x) x$Male$animID)
@@ -1495,22 +1845,22 @@ popClass <- R6Class('popClass',
           # Replace dead females
         #if (!is.null(aPairs)) {
           for (aP in length(aPairs):1) {
-          femsAlive <- unlist(llply(aPairs[[aP]]$Females, function(x) x$liveStat))
-        
-          if(!is.null(femsAlive)) {
-            if(any(!femsAlive)) {
-              
-              femsAliveI <- which(!femsAlive)
-              for (fA in length(femsAliveI):1) {
-                if (any(new_females_ind)) {
-                  aPairs[[aP]]$Females[[femsAliveI[fA]]] <- f_alive[[new_females_ind[1]]]
-                  new_females_ind <- new_females_ind[-1]            
+            femsAlive <- unlist(llply(aPairs[[aP]]$Females, function(x) x$liveStat))
+          
+            if(!is.null(femsAlive)) {
+              if(any(!femsAlive)) {
+                
+                femsAliveI <- which(!femsAlive)
+                for (fA in length(femsAliveI):1) {
+                  if (any(new_females_ind)) {
+                    aPairs[[aP]]$Females[[femsAliveI[fA]]] <- f_alive[[new_females_ind[1]]]
+                    new_females_ind <- new_females_ind[-1]            
+                  }
+                  else {aPairs[[aP]]$Females[[femsAliveI[fA]]] <- NULL}
+                  }
+                
                 }
-                else {aPairs[[aP]]$Females[[femsAliveI[fA]]] <- NULL}
-                }
-              
               }
-            }
           }
         #}
 
@@ -1536,16 +1886,16 @@ popClass <- R6Class('popClass',
       
         # Add new females      
         if (any(new_females_ind)) {
-          m <- rep(1:length(aPairs), length(new_females_ind))
+          mates <- rep(1:length(aPairs), length(new_females_ind))
           while (length(new_females_ind) > 0) {
-            if (nI_harems[m[1]] <= 0) {
-              m <- m[-1]
+            if (nI_harems[mates[1]] <= 0) {
+              mates <- mates[-1]
               next
             }
-            aPairs[[m[1]]]$Females <- append(aPairs[[m[1]]]$Females, f_alive[[new_females_ind[1]]])
+            aPairs[[mates[1]]]$Females <- append(aPairs[[mates[1]]]$Females, f_alive[[new_females_ind[1]]])
             new_females_ind <- new_females_ind[-1]
-            nI_harems[m[1]] <- nI_harems[m[1]] - 1
-            m <- m[-1]
+            nI_harems[mates[1]] <- nI_harems[mates[1]] - 1
+            mates <- mates[-1]
           }           
         } 
       
@@ -1560,24 +1910,72 @@ popClass <- R6Class('popClass',
             mate <- aP$Male
           
             for (fem in aP$Females) {
-              if (runif(1) <= tPB & fem$reproStat==T) {
-                # Generate number of kitts
-                #numKitts <- littSize(litterProbs)
-                #if (signif(sum(litterProbs$prob)) != 1) 
-                #  stop("Litter size probabilities must sum to 1")
-                indProb <- runif(1)
-                high <- min(which(litterProbs$cumProbs > indProb))
-                numKitts <- litterProbs[high, 'LitterSize']
+              # Artificial insemination
+              if (!is.null(aiRate) & fem$reproStat==T) {
+                if (self$time >= self$aiInterval[1] & 
+                    self$time < self$aiInterval[2] &
+                    self$aiLitters > 0) {
+                  # Generate number of kitts
+                  indProb <- runif(1)
+                  high <- min(which(litterProbs$cumProbs > indProb))
+                  numKitts <- litterProbs[high, 'LitterSize']
+                  
+                  # aiGenotype
+                  genRec <- sample(1:nrow(aiGenotypes), 1)
+                  aiGenotype <- aiGenotypes[genRec,]
+                  aiGenotypes <- aiGenotypes[-genRec,]
+                  
+                  # Inseminate
+                  fem$inseminate(aiGenotype, numKitts, probFemaleKitt, lociNames, self)
+                  
+                  # Log AI litter success
+                  self$aiLitters <- self$aiLitters - 1 
+                }
+              }
               
-                # Breed
-                fem$femBreed(mate, numKitts, probFemaleKitt, lociNames, self)
+              # Normal breeding if reproStat hasn't changed
+              if (fem$reproStat==T) { 
+                if (runif(1) <= tPB) {
+                  # Generate number of kitts
+                  indProb <- runif(1)
+                  high <- min(which(litterProbs$cumProbs > indProb))
+                  numKitts <- litterProbs[high, 'LitterSize']
+                  
+                  # Breed
+                  fem$femBreed(mate, numKitts, probFemaleKitt, lociNames, self)
+                }
               }
             }
           }
         }        
         self$pullAlive()
-      }
-      else {self$activePairs <- NULL}
+      } else if (length(f_alive) > 0 & length(m_alive) == 0 & !is.null(aiRate)) { # No males, but AI still possible
+        for (fem in f_alive) {
+          # Artificial insemination
+          if (fem$reproStat==T &
+              self$time >= self$aiInterval[1] & 
+              self$time < self$aiInterval[2] &
+              self$aiLitters > 0) {
+            
+            # Generate number of kitts
+            indProb <- runif(1)
+            high <- min(which(litterProbs$cumProbs > indProb))
+            numKitts <- litterProbs[high, 'LitterSize']
+            
+            # aiGenotype
+            genRec <- sample(1:nrow(aiGenotypes), 1)
+            aiGenotype <- aiGenotypes[genRec,]
+            aiGenotypes <- aiGenotypes[-genRec,]
+            
+            # Inseminate
+            fem$inseminate(aiGenotype, numKitts, probFemaleKitt, lociNames, self)
+            
+            # Log AI litter success
+            self$aiLitters <- self$aiLitters - 1 
+          }
+        }
+        self$activePairs <- NULL
+        } else {self$activePairs <- NULL}
     },
     
     kill = function(surv) {
@@ -1599,8 +1997,16 @@ popClass <- R6Class('popClass',
       self$pullAlive()
     },
     
-    incremTime = function(senesc) {
+    incremTime = function(senesc, aiRate) {
       self$time <- self$time + 1
+      
+      # Adjust AI intervals based on advancing time
+      if (!is.null(aiRate)) {
+        if (self$time == self$aiInterval[2]) {
+          self$aiInterval = self$aiInterval[-1]
+          self$aiLitters = aiRate$litts
+        }
+      }
       
       # age individuals
       alive <- self$indsAlive
@@ -1633,11 +2039,14 @@ indClass <- R6Class('indClass',
     birthMon = NA,
     mortMon = NA,
     immigrant = FALSE,
+    translocated = "No",
+    aiOffspring = FALSE,
     genotype = NA,
     
     ## Methods
-    initialize = function(animID, sex, age, mother, father, socialStat, ageToAdult, reproStat, reproHist, liveStat, censored, 
-                          birthMon, mortMon, immigrant, genotype) {
+    initialize = function(animID, sex, age, mother, father, socialStat, ageToAdult, reproStat, reproHist, 
+                          liveStat, censored, birthMon, mortMon, 
+                          immigrant, translocated, aiOffspring, genotype) {
       if (!missing(animID)) self$animID <- animID
       if (!missing(sex)) self$sex <- sex
       if (!missing(age)) self$age <- age
@@ -1658,7 +2067,8 @@ indClass <- R6Class('indClass',
       return(data.frame(animID = self$animID, sex = self$sex, age = self$age, mother = self$mother, father = self$father,
                         socialStat = self$socialStat, ageToAdult = self$ageToAdult, reproStat = self$reproStat,
                         reproHist = self$reproHist, liveStat = self$liveStat, censored = self$censored, birthMon = self$birthMon,
-                        mortMon = self$mortMon, immigrant = self$immigrant, self$genotype))
+                        mortMon = self$mortMon, immigrant = self$immigrant, translocated = self$translocated,
+                        aiOffspring = self$aiOffspring, self$genotype))
     },
     
     femBreed = function(male, numKittens, probFemaleKitt, lociNames, population) {
@@ -1706,7 +2116,9 @@ indClass <- R6Class('indClass',
         # gen Individual
         ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=self$animID, father=male$animID, socialStat="Kitten", 
                             reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
-                            birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], immigrant=FALSE, ageToAdult=as.numeric(NA))
+                            birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], 
+                            immigrant=FALSE, translocated="No", aiOffspring=FALSE,
+                            ageToAdult=as.numeric(NA))
         
         # add to population
         population$addToPop(ind) 
@@ -1724,5 +2136,67 @@ indClass <- R6Class('indClass',
       self$reproStat <- FALSE
       self$reproHist <- paste(self$reproHist, numKittens, sep=":")
       male$reproHist <- paste(male$reproHist, numKittens, sep=":")
+    },
+    
+    inseminate = function(aiGenotype, numKittens, probFemaleKitt, lociNames, population) {
+      if(self$sex != "F")
+        stop("Input mother is not Female")
+      if(self$liveStat != TRUE)
+        stop("Input mother is not alive and cannot reproduce!")
+      if(self$reproStat != TRUE)
+        stop("Input mother is not reproductive")
+      
+      if(!all(names(self$genotype) %in% names(aiGenotype)) | ncol(self$genotype) != ncol(aiGenotype))
+        stop('Population genotypes do not match with AI genotypes.')
+      
+      pop <- length(population$indsAll)
+      
+      # Generate new individuals
+      # Determine IDs
+      idKitt <- paste('aid', seq(pop + 1, pop + numKittens), sep = "")
+      
+      # Determine sex
+      sexKitt <- runif(numKittens, min = 0, max = 1) <= probFemaleKitt
+      sexKitt <- ifelse(sexKitt==TRUE, "F", "M")
+      
+      # Determine genotype...completely random following Mendelian principles
+      gts <- rbind(self$genotype, aiGenotype)
+      
+      genoKitt <- matrix(NA, ncol=ncol(gts), nrow=numKittens)
+      for (l in 1:length(lociNames)) {
+        cols <- grep(lociNames[l], names(gts))
+        genoKitt[, cols] <- apply(gts[, cols], 1, function (x) sample(x, size = numKittens, replace = TRUE))
+      }
+      genoKitt <- as.data.frame(genoKitt)
+      names(genoKitt) <- names(gts)
+      
+      # Determine birth month
+      bm <- population$time
+      
+      # Loop new individuals
+      kittens <- list()
+      for (k in 1:numKittens) {
+        # gen Individual
+        ind <- indClass$new(animID=idKitt[k], sex=sexKitt[k], age=0, mother=self$animID, father='AI', socialStat="Kitten", 
+                            reproStat=FALSE, reproHist=as.character(NA), liveStat=TRUE, censored=FALSE,
+                            birthMon=bm, mortMon=as.numeric(NA), genotype=genoKitt[k,], 
+                            immigrant=FALSE, translocated = 'No', ageToAdult=as.numeric(NA))
+        ind$aiOffspring <- TRUE
+        
+        # add to population
+        population$addToPop(ind) 
+        kittens <- append(kittens, ind)
+      }
+      
+      # update individuals alive
+      #population$pullAlive()
+      
+      # update activeLitters
+      population$activeLitters <- append(population$activeLitters, 
+                                         list(list(mother = self, kittens = kittens, gestation = 0)))
+      
+      # Update reproHist and reproStat for mother and father
+      self$reproStat <- FALSE
+      self$reproHist <- paste(self$reproHist, paste0('ai', numKittens), sep=":")
     }
 ))

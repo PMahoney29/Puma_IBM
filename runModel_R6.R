@@ -2,69 +2,130 @@
 #  Individually based model
 #  investigating the genetic consequences of small populations.  
 #  Started - 2/2015
-#  Author: Peter Mahoney, USU PhD Student
+#  Author: Peter Mahoney, UW Postdoc
 ###########################################################################
 
 #Load required packages
 source('classes_IBM_R6.R')
 
-# Starting values
-startValues <- read.csv('./Data/genotypes/startValuesFINAL.csv', stringsAsFactors=F)
-  #startValues$reproStat[5] <- F
-lociNames <- unique(sub("[.].*$","",names(startValues)[-c(1:11)]))
-genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age); 
+##################################
+## Starting genetic assignments ##
+##################################
+  # Starting values for SMM
+startValues <- read.csv('./Data/genotypes/startValues_SMM.csv', stringsAsFactors=F)
+genoCols = 12:ncol(startValues); startValues$age <- as.numeric(startValues$age);
+names(startValues)[genoCols] <- gsub('[.]', '_', names(startValues)[genoCols])
 
-# Immigrant population
-immPop <- read.csv('./Data/genotypes/immigPop.csv')
-immRate <- (0/12) / 12
-immMaleProb <- 1
+  # Starting values for the SA
+#startValues <- read.csv('./Data/genotypes/startValues_SA.csv', stringsAsFactors = F)
+#genoCols = 15:ncol(startValues); startValues$age <- as.numeric(startValues$age);
 
-# Demographics
-surv <- read.csv('./Data/survival//survivalMonthlyREAL.csv')
-ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')
-probBreed <- read.csv('./Data/reproduction/probBreed_monthly.csv')
+  # Pulls unique loci names
+lociNames <- unique(sub("[_].*$","",names(startValues)[genoCols]))
 
-  # Choose only one of the following litterProbs
-litterProbs <- read.csv('./Data/reproduction/litterProbREAL.csv')
-litterProbs$cumProbs <- cumsum(litterProbs$prob)
+##################
+## Demographics ##
+##################
+  # Survival (Choose one)
+#surv <- read.csv('./Data/survival//survivalMonthly_SMM.csv')  # Santa Monicas
+surv <- read.csv('./Data/survival/survivalMonthly_SA.csv')     # Santa Anas
 
-probFemaleKitt <- 0.5
-senesc <- 15
-minMaleReproAge <- 36  # in months
-maxN_ReproMale <- 1
+  # Stage class transition probabilities
+ageTrans <- read.csv('./Data/stageTrans/stageTrans.csv')  
 
-# Sex specific carrying capacity K
-Kf <- matrix(c(6, 1, 0), nrow=1)
-Km <- matrix(c(2, 1, 0), nrow=1)   #Km = 2
+  # Reproduction (Same for both populations, except for maxN_ReproMale )
+probBreed <- 1        # Female probability of breeding, monthly
+litterProbs <- read.csv('./Data/reproduction/litterProb.csv')  # Multinomial litter size probabilities
+litterProbs$cumProbs <- cumsum(litterProbs$prob)  # Cumulative litter size probs
+probFemaleKitt <- 0.5   # Probability of female kitten/offspring
+senesc <- 15            # Age at senescence
+minMaleReproAge <- 36   # Minimum age for reproductive males, months
+maxN_ReproMale <- 5     # Reproductive K for males; 5 for Santa Anas, 2 for Santa Monicas
 
 
-# Simulation parameters
-genOutput <- T
-savePopulations <- T
-verbose <- T
-iter = 1000
-years = 50
-numCores <- detectCores() - 1
+######################################
+## Sex specific carrying capacity K ##
+######################################
+## (Choose one)
+Kf <- matrix(c(11, 1, 0), nrow=1) ; Km <- matrix(c(5, 1, 0), nrow=1) # For SA
+Kf <- matrix(c(6, 1, 0), nrow=1) ; Km <- matrix(c(2, 1, 0), nrow=1)  # For SMM
 
-# Run model in serial
+##########################
+## Immigrant population ##
+##########################
+## Immigrant population genotypes (Choose one)
+immPop <- read.csv('./Data/genotypes/immigPop_SA.csv') # SA
+#immPop <- read.csv('./Data/genotypes/immigPop_SMM.csv') # SMM
+
+# Rename genos in immPop file
+names(immPop)[3:ncol(immPop)] <- gsub('[.]', '_', names(immPop)[3:ncol(immPop)])  # names of genotypes
+immRate <- 0     # Immigration rate, 0 = No immigration
+immMaleProb <- 1 # Probability of male immigrant, should be 0-1
+
+# Replacement probabilities
+femReplaceProb <- 0.0  # Probability a immigrant/translocated individual will replace resident
+maleReplaceProb <- 0.5 # Probability a immigrant/translocated individual will replace resident
+
+
+
+####################
+## Translocations ##
+####################
+transMets <- NULL ; transPop <- NULL  # to turn off Translocations
+
+##########################
+## Insemination Program ##
+##########################
+aiRate <- NULL; aiGenotypes <- NULL  # to turn off AI
+
+
+
+
+###########################
+## Simulation parameters ##
+###########################
+genOutput <- T        # Generate genetic output, T/F
+savePopulations <- T  # Save simulated populations, T/F
+verbose <- T          # Provide verbose output
+iter = 5000           # Number of simulated populations
+years = 50            # Number of simulated years per population
+numCores <- 24        # Number of cores to use if startParSim is used; detectCores() - 1
+
+
+###########################
+## Run model in parallel ##
+###########################
+set.seed(1000)
+sim1 <- simClass$new()
+system.time(sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
+                 surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
+                 Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
+                 immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+                 transPop = transPop,  transMets = transMets, 
+                 femReplaceProb = femReplaceProb, maleReplaceProb = maleReplaceProb,
+                 aiRate = aiRate, aiGenotypes = aiGenotypes,
+                 genOutput = genOutput, savePopulations = savePopulations, verbose = verbose))
+save(sim1, file = 'Output.dat')
+
+
+#########################
+## Run model in serial ##
+#########################
 sim1 <- simClass$new()
 sim1$startSim(iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
               surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
               Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
               immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
+              transPop = transPop, transMets = transMets, 
+              femReplaceProb = femReplaceProb, maleReplaceProb = maleReplaceProb,
+              aiRate = aiRate, aiGenotypes = aiGenotypes,
               genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
+save(sim1, file = 'Output.dat')
 
-# Run model in parallel
-set.seed(1000)
-sim1 <- simClass$new()
-sim1$startParSim(numCores = numCores, iter = iter, years = years, startValues = startValues, lociNames = lociNames, genoCols = genoCols, 
-              surv = surv, ageTrans = ageTrans, probBreed = probBreed, litterProbs = litterProbs, probFemaleKitt = probFemaleKitt,
-              Kf = Kf, Km = Km, senesc = senesc, minMaleReproAge = minMaleReproAge, maxN_ReproMale = maxN_ReproMale,
-              immPop = immPop, immRate = immRate, immMaleProb = immMaleProb,
-              genOutput = genOutput, savePopulations = savePopulations, verbose = verbose)
-save.image('WHATEVER.Rdata')
 
-# Display summary statistics
+################################
+## Display summary statistics ##
+################################
 sim1$summary()
 sim1$plot(fieldStat=c('lambda', 'extinctTime', 'Na', 'Ho'))
 #sim1$plot(fieldStat=c('pop.size', 'lambda', 'extinctTime', 'PropPoly', 'Ne', 'Na', 'Ho', 'He', 'IR', 'Fis'))
@@ -73,66 +134,22 @@ sim1$plot(fieldStat=c('lambda', 'extinctTime', 'Na', 'Ho'))
 matplot2(as.matrix(sim1$pop.size$All$TotalN[1:4,]))
 
 # Pull genetic values for a given year
-    yrs = c(0, 25) #, 50)
-    genoMetric = c("Na",'He', 'Ho', 'PropPoly')
-    sim1$pullGenoSummary(yrs, genoMetric)
-    
+yrs = c(0, 25) #, 50)
+genoMetric = c("Na",'He', 'Ho', 'PropPoly')
+sim1$pullGenoSummary(yrs, genoMetric)
+
 # Pull genetic values including within population SEs
-    yrs = c(0, 25)
-    genoMetric = c("Na",'He', 'Ho', 'Fis', 'PropPoly')
-    pullGenoWithinPop(sim1, yrs, genoMetric)
+yrs = c(0, 25)
+genoMetric = c("Na",'He', 'Ho', 'Fis', 'PropPoly')
+pullGenoWithinPop(sim1, yrs, genoMetric)
 
-    
+
 # Pull immigrant pop data
-    # For newer sim objects
-    sim1$immigrants()
-    sim1$immigrants()$summary
-    sim1$immigrants()$byPop
-      #or
-    sim1$summary()
-    
-# Bootstrap extinction probability
-    library(boot)
-    
-    # bootstrapping with 1000 replications
-    extinctions <- as.numeric(sim1$extinct)   #change sim1 to the name of the sim object
-    extProb <- function(d, i) {
-      nd <- d[i]
-      return(mean(nd))
-    }
-    out <- boot(data=extinctions, statistic=extProb, R=50000, stype='i')
-    
-    # view results
-    out
-    plot(out)
-    
-    # get 95% confidence interval
-    boot.ci(out, conf=0.95, type=c("basic", 'perc'))
+# For newer sim objects
+# Swap immigrants out with translocated or aiOffspring for summaries of each
+sim1$immigrants()
+sim1$immigrants()$summary
+sim1$immigrants()$byPop
+#or
+sim1$summary()
 
-# Bootstrap extinction probability, HPDI
-    library(coda)
-    
-    # HPDI bootstrapping function
-    bootHPD <- function(dStat, reps = 10000, prob = 0.95) {
-      mSamp <- c()
-      for (r in 1:reps) {
-        samp <- sample(extinctions, replace=T)
-        mSamp <- c(mSamp, mean(samp))
-      }
-      return(HPDinterval(as.mcmc(mSamp), prob = prob, na.rm = T))
-    }
-  
-    # bootstrapping with 10000 replications
-    extinctions <- as.numeric(sim1$extinct)   #change sim1 to the name of the sim object
-    bootHPD(extinctions, reps=50000, prob = 0.95)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-        
