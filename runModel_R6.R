@@ -2,7 +2,20 @@
 #  Individually based model
 #  investigating the genetic consequences of small populations.  
 #  Started - 2/2015
-#  Author: Peter Mahoney, UW Postdoc
+#  Author: Peter Mahoney, John Benson
+
+#  Publications:
+# Benson, J.F., Mahoney, P.J., Sikich, J.A., Serieys, L.E., Pollinger, J.P., 
+# Ernest, H.B. and Riley, S.P., 2016. Interactions between demography, genetics, 
+# and landscape connectivity increase extinction probability for a small 
+# population of large carnivores in a major metropolitan area. Proc. R. Soc. B, 
+# 283(1837), p.20160957.
+
+# Benson John F., Peter J. Mahoney, T. Winston Vickers, Jeff A. Sikich, 
+# Paul Beier, Seth P.D. Riley, Holly B. Ernest, Walter M. Boyce.  2019.  
+# Extinction vortex dynamics of top predators isolated by urbanization.  
+# Ecological Applications
+
 ###########################################################################
 
 #Load required packages
